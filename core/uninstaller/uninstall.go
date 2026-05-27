@@ -36,7 +36,10 @@ const (
 	TargetPanel
 )
 
-// Run removes services and optionally deletes the install directory.
+// Run removes services and, for a full-stack uninstall only, optionally
+// deletes the entire installation directory. Partial uninstalls (server
+// or panel only) never remove the shared install path so the remaining
+// component keeps working.
 func Run(target Target, removeFiles bool) error {
 	installDir, err := paths.InstallDir()
 	if err != nil {
@@ -50,20 +53,25 @@ func Run(target Target, removeFiles bool) error {
 		if err := service.Uninstall(service.ComponentServer); err != nil {
 			return err
 		}
+		ui.Info("Installation directory preserved: " + installDir)
 	case TargetPanel:
 		if err := service.Uninstall(service.ComponentPanel); err != nil {
 			return err
 		}
+		ui.Info("Installation directory preserved: " + installDir)
 	default:
 		_ = service.Uninstall(service.ComponentPanel)
 		_ = service.Uninstall(service.ComponentServer)
-	}
 
-	if removeFiles {
-		if err := os.RemoveAll(installDir); err != nil {
-			return fmt.Errorf("remove install directory: %w", err)
+		// Only full-stack uninstall may delete the shared install folder.
+		if removeFiles {
+			if err := os.RemoveAll(installDir); err != nil {
+				return fmt.Errorf("remove install directory: %w", err)
+			}
+			ui.Success("Removed installation directory: " + installDir)
+		} else {
+			ui.Info("Services removed; installation directory kept: " + installDir)
 		}
-		ui.Success("Removed installation directory: " + installDir)
 	}
 
 	ui.SuccessBox("Uninstall Complete", "Selected components have been removed.")

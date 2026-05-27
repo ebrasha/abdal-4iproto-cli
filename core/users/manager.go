@@ -119,6 +119,118 @@ func RemoveUser(username string) error {
 	return service.Restart(service.ComponentServer)
 }
 
+// UpdateInput describes the editable fields of an account. Pointer types
+// are used so callers can choose to update a subset; nil pointers mean
+// "leave this field untouched".
+type UpdateInput struct {
+	Username       string
+	NewPassword    *string
+	NewRole        *string
+	NewMaxSessions *int
+	NewMaxSpeed    *int
+	NewMaxTotalMB  *int
+	NewLog         *string
+	NewBlockedDom  *[]string
+	NewBlockedIPs  *[]string
+}
+
+// UpdateUser modifies an existing account in users.json and restarts the
+// Abdal 4iProto Server service when at least one field was changed.
+func UpdateUser(in UpdateInput) error {
+	in.Username = strings.TrimSpace(in.Username)
+	if in.Username == "" {
+		return fmt.Errorf("username is required")
+	}
+	installDir, err := paths.InstallDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(installDir, config.UsersFileName)
+
+	accounts, err := loadUsers(path)
+	if err != nil {
+		return err
+	}
+
+	idx := -1
+	for i := range accounts {
+		if strings.EqualFold(accounts[i].Username, in.Username) {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("user '%s' not found", in.Username)
+	}
+
+	target := &accounts[idx]
+
+	if in.NewPassword != nil {
+		if strings.TrimSpace(*in.NewPassword) == "" {
+			return fmt.Errorf("password cannot be empty")
+		}
+		target.Password = *in.NewPassword
+	}
+	if in.NewRole != nil {
+		role := strings.TrimSpace(*in.NewRole)
+		if role != config.UserRoleAdmin && role != config.UserRoleUser {
+			return fmt.Errorf("role must be '%s' or '%s'", config.UserRoleAdmin, config.UserRoleUser)
+		}
+		target.Role = role
+	}
+	if in.NewMaxSessions != nil {
+		v := *in.NewMaxSessions
+		if v < config.MinSessions || v > config.MaxSessions {
+			return fmt.Errorf("max_sessions must be between %d and %d", config.MinSessions, config.MaxSessions)
+		}
+		target.MaxSessions = v
+	}
+	if in.NewMaxSpeed != nil {
+		v := *in.NewMaxSpeed
+		if v < config.MinSpeedKbps || v > config.MaxSpeedKbps {
+			return fmt.Errorf("max_speed_kbps must be between %d and %d", config.MinSpeedKbps, config.MaxSpeedKbps)
+		}
+		target.MaxSpeedKbps = v
+	}
+	if in.NewMaxTotalMB != nil {
+		if *in.NewMaxTotalMB < 0 {
+			return fmt.Errorf("max_total_mb cannot be negative")
+		}
+		target.MaxTotalMB = *in.NewMaxTotalMB
+	}
+	if in.NewLog != nil {
+		log := strings.ToLower(strings.TrimSpace(*in.NewLog))
+		if log != "yes" && log != "no" {
+			return fmt.Errorf("log must be 'yes' or 'no'")
+		}
+		target.Log = log
+	}
+	if in.NewBlockedDom != nil {
+		target.BlockedDomains = normalizeList(*in.NewBlockedDom)
+	}
+	if in.NewBlockedIPs != nil {
+		target.BlockedIPs = normalizeList(*in.NewBlockedIPs)
+	}
+
+	if err := saveUsers(path, accounts); err != nil {
+		return err
+	}
+	ui.Success(fmt.Sprintf("User '%s' updated", target.Username))
+	return service.Restart(service.ComponentServer)
+}
+
+// normalizeList trims spaces and drops empty entries while keeping order.
+func normalizeList(items []string) []string {
+	out := make([]string, 0, len(items))
+	for _, raw := range items {
+		v := strings.TrimSpace(raw)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // ListUsernames returns the list of usernames stored in users.json.
 // It performs a read-only scan and never restarts any service.
 func ListUsernames() ([]string, error) {

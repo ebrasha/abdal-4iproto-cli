@@ -32,6 +32,24 @@ import (
 	"abdal-4iproto-cli/core/ui"
 )
 
+// GetServerConfig returns the parsed server_config.json without changing it.
+func GetServerConfig() (*filesgen.ServerConfig, error) {
+	installDir, err := paths.InstallDir()
+	if err != nil {
+		return nil, err
+	}
+	return loadServerConfig(filepath.Join(installDir, config.ServerConfigFileName))
+}
+
+// GetPanelConfig returns the parsed abdal-4iproto-panel.json without changing it.
+func GetPanelConfig() (*filesgen.PanelConfig, error) {
+	installDir, err := paths.InstallDir()
+	if err != nil {
+		return nil, err
+	}
+	return loadPanelConfig(filepath.Join(installDir, config.PanelConfigFileName))
+}
+
 // UpdateServerPorts replaces the listener ports in server_config.json.
 func UpdateServerPorts(ports []int) error {
 	if err := network.ValidatePorts(ports); err != nil {

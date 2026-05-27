@@ -47,8 +47,8 @@ func Run() error {
 			"Uninstall Abdal 4iProto",
 			"Manage Services",
 			"Manage Users",
-			"Edit Server Configuration",
-			"Edit Panel Configuration",
+			"Server Configuration",
+			"Panel Configuration",
 			"Install CLI Command (abdal-4iproto-cli)",
 			"Diagnostics",
 			"Help",
@@ -78,12 +78,12 @@ func Run() error {
 			if err := handleManageUsers(); err != nil {
 				ui.ErrorBox("User Management Failed", err.Error())
 			}
-		case "Edit Server Configuration":
-			if err := handleEditServerConfig(); err != nil {
+		case "Server Configuration":
+			if err := handleServerConfigMenu(); err != nil {
 				ui.ErrorBox("Server Config Failed", err.Error())
 			}
-		case "Edit Panel Configuration":
-			if err := handleEditPanelConfig(); err != nil {
+		case "Panel Configuration":
+			if err := handlePanelConfigMenu(); err != nil {
 				ui.ErrorBox("Panel Config Failed", err.Error())
 			}
 		case "Install CLI Command (abdal-4iproto-cli)":
@@ -122,19 +122,32 @@ func handleUninstall() error {
 	if err != nil {
 		return err
 	}
-	removeFiles, err := ui.AskConfirm("Delete installation directory and files?", true)
-	if err != nil {
-		return err
-	}
+
 	var target uninstaller.Target
+	var removeFiles bool
+
 	switch scope {
 	case "Server only":
 		target = uninstaller.TargetServer
+		// Partial uninstall: never delete the shared install directory.
+		removeFiles = false
+		ui.Info("Only the server service will be removed. The installation folder is kept for the panel and configs.")
 	case "Panel only":
 		target = uninstaller.TargetPanel
+		removeFiles = false
+		ui.Info("Only the panel service will be removed. The installation folder is kept for the server and configs.")
 	default:
 		target = uninstaller.TargetAll
+		installDir, _ := paths.InstallDir()
+		removeFiles, err = ui.AskConfirm(
+			fmt.Sprintf("Delete the installation directory and all files?\n%s", installDir),
+			true,
+		)
+		if err != nil {
+			return err
+		}
 	}
+
 	return uninstaller.Run(target, removeFiles)
 }
 
@@ -170,6 +183,7 @@ func handleManageUsers() error {
 		choice, err := ui.AskSelect("Manage Users", []string{
 			"List & View Users",
 			"Add User",
+			"Edit User",
 			"Remove User",
 			"Back",
 		}, "List & View Users")
@@ -188,6 +202,10 @@ func handleManageUsers() error {
 			if err := handleAddUser(); err != nil {
 				ui.ErrorBox("Add User Failed", err.Error())
 			}
+		case "Edit User":
+			if err := handleEditUser(); err != nil {
+				ui.ErrorBox("Edit User Failed", err.Error())
+			}
 		case "Remove User":
 			if err := handleRemoveUser(); err != nil {
 				ui.ErrorBox("Remove User Failed", err.Error())
@@ -197,6 +215,168 @@ func handleManageUsers() error {
 		}
 		fmt.Println()
 	}
+}
+
+// handleEditUser lets the admin pick a user and update one or more fields.
+// Each field is shown with its current value so the change is intentional.
+func handleEditUser() error {
+	names, err := users.ListUsernames()
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		ui.WarningBox("No Users", "users.json is empty. Add a user first.")
+		return nil
+	}
+
+	options := append([]string{}, names...)
+	options = append(options, "Cancel")
+
+	choice, err := ui.AskSelect("Select a user to edit", options, names[0])
+	if err != nil {
+		if err == terminal.InterruptErr {
+			return nil
+		}
+		return err
+	}
+	if choice == "Cancel" {
+		ui.Info("Edit cancelled.")
+		return nil
+	}
+
+	account, err := users.GetUser(choice)
+	if err != nil {
+		return err
+	}
+	renderUserDetails(account)
+
+	in := users.UpdateInput{Username: account.Username}
+
+	for {
+		field, err := ui.AskSelect("Field to edit", []string{
+			"Password",
+			"Role",
+			"Max Sessions",
+			"Max Speed (Kbps)",
+			"Max Total (MB)",
+			"Log",
+			"Blocked Domains",
+			"Blocked IPs",
+			"Save & Exit",
+			"Cancel",
+		}, "Password")
+		if err != nil {
+			if err == terminal.InterruptErr {
+				return nil
+			}
+			return err
+		}
+
+		switch field {
+		case "Password":
+			pwd, err := ui.AskPassword("New password", true)
+			if err != nil {
+				return err
+			}
+			in.NewPassword = &pwd
+		case "Role":
+			role, err := ui.AskSelect("New role", []string{config.UserRoleUser, config.UserRoleAdmin}, account.Role)
+			if err != nil {
+				return err
+			}
+			if role == config.UserRoleAdmin {
+				ui.WarningBox("Security Notice", "Admin accounts are highly privileged. Proceed only if you understand the risk.")
+				ok, err := ui.AskConfirm("Promote this account to admin?", false)
+				if err != nil || !ok {
+					ui.Info("Role change skipped.")
+					continue
+				}
+			}
+			in.NewRole = &role
+		case "Max Sessions":
+			v, err := ui.AskInt("Max concurrent sessions (1-10000)", account.MaxSessions, config.MinSessions, config.MaxSessions)
+			if err != nil {
+				return err
+			}
+			in.NewMaxSessions = &v
+		case "Max Speed (Kbps)":
+			v, err := ui.AskInt("Max speed (Kbps)", account.MaxSpeedKbps, config.MinSpeedKbps, config.MaxSpeedKbps)
+			if err != nil {
+				return err
+			}
+			in.NewMaxSpeed = &v
+		case "Max Total (MB)":
+			v, err := ui.AskInt("Max total transfer (MB, 0=unlimited)", account.MaxTotalMB, 0, 1<<30)
+			if err != nil {
+				return err
+			}
+			in.NewMaxTotalMB = &v
+		case "Log":
+			log, err := ui.AskSelect("Log activity?", []string{"yes", "no"}, account.Log)
+			if err != nil {
+				return err
+			}
+			in.NewLog = &log
+		case "Blocked Domains":
+			raw, err := ui.AskString("Blocked domains (comma-separated)", strings.Join(account.BlockedDomains, ","), false)
+			if err != nil {
+				return err
+			}
+			list := splitCSV(raw)
+			in.NewBlockedDom = &list
+		case "Blocked IPs":
+			raw, err := ui.AskString("Blocked IPs (comma-separated)", strings.Join(account.BlockedIPs, ","), false)
+			if err != nil {
+				return err
+			}
+			list := splitCSV(raw)
+			in.NewBlockedIPs = &list
+		case "Save & Exit":
+			if !updateInputHasChanges(in) {
+				ui.Info("No changes to save.")
+				return nil
+			}
+			ui.WarningBox("Confirm Update", fmt.Sprintf("Save changes for user '%s' and restart the server service?", account.Username))
+			ok, err := ui.AskConfirm("Apply changes?", true)
+			if err != nil || !ok {
+				ui.Info("Edit cancelled.")
+				return nil
+			}
+			return users.UpdateUser(in)
+		case "Cancel":
+			ui.Info("Edit cancelled.")
+			return nil
+		}
+	}
+}
+
+// updateInputHasChanges reports whether at least one editable field has
+// been touched by the admin during the edit session.
+func updateInputHasChanges(in users.UpdateInput) bool {
+	return in.NewPassword != nil ||
+		in.NewRole != nil ||
+		in.NewMaxSessions != nil ||
+		in.NewMaxSpeed != nil ||
+		in.NewMaxTotalMB != nil ||
+		in.NewLog != nil ||
+		in.NewBlockedDom != nil ||
+		in.NewBlockedIPs != nil
+}
+
+// splitCSV converts a comma-separated string into a clean slice of values.
+func splitCSV(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // handleListUsers shows the usernames and lets the admin pick one to view
@@ -370,6 +550,124 @@ func handleRemoveUser() error {
 	return users.RemoveUser(choice)
 }
 
+// handleServerConfigMenu groups the read-only view and the editor for
+// server_config.json under a single submenu.
+func handleServerConfigMenu() error {
+	for {
+		choice, err := ui.AskSelect("Server Configuration", []string{
+			"View Configuration",
+			"Edit Configuration",
+			"Back",
+		}, "View Configuration")
+		if err != nil {
+			if err == terminal.InterruptErr {
+				return nil
+			}
+			return err
+		}
+		switch choice {
+		case "View Configuration":
+			if err := handleViewServerConfig(); err != nil {
+				ui.ErrorBox("View Server Config Failed", err.Error())
+			}
+		case "Edit Configuration":
+			if err := handleEditServerConfig(); err != nil {
+				ui.ErrorBox("Edit Server Config Failed", err.Error())
+			}
+		case "Back":
+			return nil
+		}
+		fmt.Println()
+	}
+}
+
+// handlePanelConfigMenu groups the read-only view and the editor for
+// abdal-4iproto-panel.json under a single submenu.
+func handlePanelConfigMenu() error {
+	for {
+		choice, err := ui.AskSelect("Panel Configuration", []string{
+			"View Configuration",
+			"Edit Configuration",
+			"Back",
+		}, "View Configuration")
+		if err != nil {
+			if err == terminal.InterruptErr {
+				return nil
+			}
+			return err
+		}
+		switch choice {
+		case "View Configuration":
+			if err := handleViewPanelConfig(); err != nil {
+				ui.ErrorBox("View Panel Config Failed", err.Error())
+			}
+		case "Edit Configuration":
+			if err := handleEditPanelConfig(); err != nil {
+				ui.ErrorBox("Edit Panel Config Failed", err.Error())
+			}
+		case "Back":
+			return nil
+		}
+		fmt.Println()
+	}
+}
+
+// handleViewServerConfig prints server_config.json in a colored key/value
+// box so the admin can inspect every field at a glance.
+func handleViewServerConfig() error {
+	cfg, err := configmgr.GetServerConfig()
+	if err != nil {
+		return err
+	}
+	portsStr := network.FormatPortList(cfg.Ports)
+	if portsStr == "" {
+		portsStr = "—"
+	}
+	ui.KeyValueBox("Server Configuration", [][2]string{
+		{"Listener Ports", portsStr},
+		{"Shell", cfg.Shell},
+		{"Max Auth Attempts", fmt.Sprintf("%d", cfg.MaxAuthAttempts)},
+		{"Server Banner", cfg.ServerVersion},
+		{"Private Key File", cfg.PrivateKeyFile},
+		{"Public Key File", cfg.PublicKeyFile},
+	})
+	return nil
+}
+
+// handleViewPanelConfig prints abdal-4iproto-panel.json in a colored
+// key/value box with the password masked for safety.
+func handleViewPanelConfig() error {
+	cfg, err := configmgr.GetPanelConfig()
+	if err != nil {
+		return err
+	}
+	ui.KeyValueBox("Panel Configuration", [][2]string{
+		{"Port", fmt.Sprintf("%d", cfg.Port)},
+		{"Username", cfg.Username},
+		{"Password", maskPassword(cfg.Password)},
+		{"Logging", boolLabel(cfg.Logging)},
+		{"Max Login Attempts", fmt.Sprintf("%d", cfg.MaxLoginAttempts)},
+		{"Login Attempt Window (sec)", fmt.Sprintf("%d", cfg.LoginAttemptWindow)},
+		{"Block Duration (sec)", fmt.Sprintf("%d", cfg.BlockDuration)},
+		{"Theme", cfg.Theme},
+		{"Blocked IPs", joinOrDash(cfg.BlockedIPs)},
+	})
+
+	showPass, err := ui.AskConfirm("Reveal panel password in clear text?", false)
+	if err == nil && showPass {
+		ui.Box("Panel Password (clear text)", cfg.Password)
+	}
+	return nil
+}
+
+// boolLabel returns a human-readable label for a boolean configuration.
+func boolLabel(b bool) string {
+	if b {
+		return "enabled"
+	}
+	return "disabled"
+}
+
 func handleEditServerConfig() error {
 	field, err := ui.AskSelect("Field to update", []string{"ports", "max_auth_attempts", "server_version"}, "ports")
 	if err != nil {
@@ -441,9 +739,9 @@ Main Menu
   Install Abdal 4iProto
   Uninstall Abdal 4iProto
   Manage Services
-  Manage Users  ──► List & View Users / Add User / Remove User
-  Edit Server Configuration
-  Edit Panel Configuration
+  Manage Users  ──► List & View Users / Add User / Edit User / Remove User
+  Server Configuration ──► View Configuration / Edit Configuration
+  Panel Configuration  ──► View Configuration / Edit Configuration
   Install CLI Command (abdal-4iproto-cli)
   Diagnostics
   Help / Exit

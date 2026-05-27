@@ -25,7 +25,7 @@ Deploying the full **Abdal 4iProto** stack (Server + Web Panel + SSH KeyGen) by 
 - 🔐 **SHA-256 verification** – Every downloaded binary is checked against the GitHub release `digest`.
 - 🔑 **SSH key generation** – Calls the official KeyGen tool with `ed25519`, `4096` bits, force overwrite by default.
 - ⚙️ **Service installation** – `systemd` on Linux, `sc` on Windows, with auto-start.
-- 👥 **User management** – List & view, add, and remove SSH users with role, bandwidth, session, and quota controls.
+- 👥 **User management** – List & view, add, edit, and remove SSH users with role, bandwidth, session, and quota controls.
 - 🛠️ **Live config editor** – Update server ports, panel credentials, and other settings on the fly.
 - 🔄 **Auto-restart** – Services restart automatically after every config or user change.
 - 🧰 **Self-install** – Register itself as the global `abdal-4iproto-cli` command.
@@ -91,8 +91,17 @@ abdal-4iproto-cli config panel  --port 52202 --username ebrasha --password "new-
 # Self-install as global command
 abdal-4iproto-cli self-install
 
-# Uninstall everything
+# Uninstall – server service only (installation folder is preserved)
+abdal-4iproto-cli uninstall --server-only
+
+# Uninstall – panel service only (installation folder is preserved)
+abdal-4iproto-cli uninstall --panel-only
+
+# Full uninstall including the installation directory (default)
 abdal-4iproto-cli uninstall
+
+# Full uninstall but keep all files on disk
+abdal-4iproto-cli uninstall --keep-files
 
 # Help & full reference
 abdal-4iproto-cli help

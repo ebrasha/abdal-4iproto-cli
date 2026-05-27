@@ -48,7 +48,9 @@ func newUninstallCmd() *cobra.Command {
 			default:
 				target = uninstaller.TargetAll
 			}
-			return uninstaller.Run(target, !keepFiles)
+			// Delete install directory only on full-stack uninstall (not --keep-files).
+			removeInstallDir := target == uninstaller.TargetAll && !keepFiles
+			return uninstaller.Run(target, removeInstallDir)
 		},
 	}
 
