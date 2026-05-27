@@ -39,7 +39,15 @@ func newHelpCmd() *cobra.Command {
 }
 
 func printExtendedHelp(root *cobra.Command) {
-	ui.SectionHeader(config.AppName + " – Help")
+	ui.SectionHeader(config.AppName + " v" + config.AppVersion + " – Help")
+
+	ui.KeyValueBox("Version", [][2]string{
+		{"Application", config.AppName},
+		{"Version", config.AppVersion},
+		{"Command", config.AppCommandName},
+		{"Repository", config.CliRepoURL},
+	})
+
 	ui.Box("Programmer", strings.TrimSpace(fmt.Sprintf(`%s
 Email   : %s
 GitHub  : %s

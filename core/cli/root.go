@@ -26,6 +26,7 @@ import (
 	"abdal-4iproto-cli/core/config"
 	"abdal-4iproto-cli/core/interactive"
 	"abdal-4iproto-cli/core/ui"
+	"abdal-4iproto-cli/core/updatecheck"
 )
 
 // Execute is the public entry used by main.go.
@@ -57,6 +58,7 @@ func NewRoot() *cobra.Command {
 			return
 		}
 		ui.PrintBanner()
+		updatecheck.Notify()
 		if ui.RunCountdown(config.CountdownSeconds) {
 			os.Exit(0)
 		}

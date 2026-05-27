@@ -29,7 +29,10 @@ import (
 	"abdal-4iproto-cli/core/ui"
 )
 
-// Install copies the running executable to a directory on PATH.
+// Install copies the running executable to a directory on PATH. If the
+// destination file already exists it is overwritten; on Windows the
+// existing binary may be locked by another process, so the function
+// first moves it aside before writing the new copy.
 func Install() error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -45,6 +48,12 @@ func Install() error {
 	}
 
 	dest := filepath.Join(destDir, destName)
+
+	// Force-overwrite: drop any previous binary at this path.
+	if err := prepareOverwrite(dest); err != nil {
+		return err
+	}
+
 	if err := copyFile(exe, dest); err != nil {
 		return err
 	}
@@ -56,6 +65,37 @@ func Install() error {
 	}
 
 	ui.SuccessBox("CLI Self-Install", fmt.Sprintf("Installed '%s' to:\n%s", config.AppCommandName, dest))
+	return nil
+}
+
+// prepareOverwrite makes sure a fresh copy can be written at dest by
+// removing or moving aside any existing file. The renamed leftover
+// (".old") is cleared on a best-effort basis so a Windows binary that
+// is currently locked by another process never blocks the install.
+func prepareOverwrite(dest string) error {
+	info, err := os.Stat(dest)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect destination: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("destination path is a directory, not a file: %s", dest)
+	}
+
+	if removeErr := os.Remove(dest); removeErr == nil {
+		ui.Info("Existing binary overwritten: " + dest)
+		return nil
+	}
+
+	// Likely Windows file-in-use: move the old binary aside and continue.
+	stale := dest + ".old"
+	_ = os.Remove(stale)
+	if renameErr := os.Rename(dest, stale); renameErr != nil {
+		return fmt.Errorf("cannot overwrite existing binary at %s (it may be locked by another process): %w", dest, renameErr)
+	}
+	ui.Info("Existing binary moved aside: " + stale)
 	return nil
 }
 

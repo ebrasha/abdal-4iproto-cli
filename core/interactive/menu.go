@@ -34,12 +34,14 @@ import (
 	"abdal-4iproto-cli/core/service"
 	"abdal-4iproto-cli/core/ui"
 	"abdal-4iproto-cli/core/uninstaller"
+	"abdal-4iproto-cli/core/updatecheck"
 	"abdal-4iproto-cli/core/users"
 )
 
 // Run launches the interactive main menu (default when no flags are passed).
 func Run() error {
 	ui.PrintBanner()
+	updatecheck.Notify()
 
 	for {
 		choice, err := ui.AskSelect("Main Menu", []string{
@@ -732,7 +734,13 @@ func handleEditPanelConfig() error {
 }
 
 func printInteractiveHelp() {
-	ui.SectionHeader("Help & Reference")
+	ui.SectionHeader(config.AppName + " v" + config.AppVersion + " – Help & Reference")
+	ui.KeyValueBox("Version", [][2]string{
+		{"Application", config.AppName},
+		{"Version", config.AppVersion},
+		{"Command", config.AppCommandName},
+		{"Repository", config.CliRepoURL},
+	})
 	ui.Box("Programmer", config.ProgrammerName+"\n"+config.ProgrammerMail+"\n"+config.ProgrammerTG)
 	ui.Box("Interactive Menu", strings.TrimSpace(`
 Main Menu

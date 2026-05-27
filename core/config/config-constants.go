@@ -23,7 +23,7 @@ package config
 const (
 	AppName        = "Abdal 4iProto Cli"
 	AppCommandName = "abdal-4iproto-cli"
-	AppVersion     = "1.5.0"
+	AppVersion     = "1.6"
 	ProgrammerName = "Ebrahim Shafiei (EbraSha)"
 	ProgrammerMail = "Prof.Shafiei@Gmail.com"
 	ProgrammerTG   = "https://t.me/ProfShafiei"
@@ -44,6 +44,8 @@ const (
 	SSHKeygenLatestReleaseAPI = "https://api.github.com/repos/ebrasha/abdal-4iproto-server-ssh-keygen/releases/latest"
 	PanelLatestReleaseAPI     = "https://api.github.com/repos/ebrasha/abdal-4iproto-panel/releases/latest"
 	ServerLatestReleaseAPI    = "https://api.github.com/repos/ebrasha/abdal-4iproto-server/releases/latest"
+	CliLatestReleaseAPI       = "https://api.github.com/repos/ebrasha/abdal-4iproto-cli/releases/latest"
+	CliRepoURL                = "https://github.com/ebrasha/abdal-4iproto-cli"
 )
 
 // Installation directories for each supported operating system.
@@ -153,11 +155,14 @@ const (
 const (
 	HTTPTimeoutSeconds       = 60
 	DownloadTimeoutSeconds   = 1800
-	UserAgentHeader          = "Abdal-4iProto-Cli/1.0 (+https://github.com/ebrasha)"
 	GithubAcceptHeaderJSON   = "application/vnd.github+json"
 	GithubAcceptHeaderBinary = "application/octet-stream"
 	GithubAPIVersion         = "2022-11-28"
 )
+
+// UserAgentHeader returns a freshly composed User-Agent so it always stays
+// in sync with AppVersion without requiring a constant update.
+var UserAgentHeader = "Abdal-4iProto-Cli/" + AppVersion + " (+" + ProgrammerGH + ")"
 
 // Default panel configuration values.
 const (
