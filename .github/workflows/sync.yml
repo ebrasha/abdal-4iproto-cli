@@ -16,6 +16,6 @@ jobs:
 
       - name: Push to Target Repo
         run: |
-          git remote add target https://${{ secrets.SYNC_TOKEN }}@github.com/4iProto/abdal-4iproto-cli.git
+          git remote add target https://${{ secrets.SYNC_TOKEN_REPO }}@github.com/4iProto/abdal-4iproto-cli.git
           # This command pushes all branches and tags to the target repository
           git push target --force --prune +refs/heads/*:refs/heads/* +refs/tags/*:refs/tags/*
