@@ -1,0 +1,21 @@
+name: Sync to Target Repo
+
+on:
+  push:
+    branches:
+      - main   
+
+jobs:
+  git-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Target Repo
+        run: |
+          git remote add target https://${{ secrets.SYNC_TOKEN }}@github.com/4iProto/abdal-4iproto-cli.git
+          # This command pushes all branches and tags to the target repository
+          git push target --force --prune +refs/heads/*:refs/heads/* +refs/tags/*:refs/tags/*
