@@ -3,7 +3,7 @@ name: Sync to 4iProto-abdal-4iproto-cli
 on:
   push:
     branches:
-      - main   
+      - main
 
 jobs:
   git-sync:
@@ -13,7 +13,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.SYNC_TOKEN_REPO }}
 
       - name: Push to 4iProto-abdal-4iproto-cli
         run: |
