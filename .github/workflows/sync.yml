@@ -1,4 +1,4 @@
-name: Sync to 4iProto/abdal-4iproto-cli
+name: Sync to 4iProto-abdal-4iproto-cli
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.SYNC_TOKEN_REPO }}
 
-      - name: Push to 4iProto/abdal-4iproto-cli
+      - name: Push to 4iProto-abdal-4iproto-cli
         run: |
           git remote add target https://x-access-token:${{ secrets.SYNC_TOKEN_REPO }}@github.com/4iProto/abdal-4iproto-cli.git
           git push target --force --prune +refs/heads/*:refs/heads/* +refs/tags/*:refs/tags/*
