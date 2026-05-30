@@ -23,7 +23,7 @@ package config
 const (
 	AppName        = "Abdal 4iProto Cli"
 	AppCommandName = "abdal-4iproto-cli"
-	AppVersion     = "2.5"
+	AppVersion     = "3.0"
 	ProgrammerName = "Ebrahim Shafiei (EbraSha)"
 	ProgrammerMail = "Prof.Shafiei@Gmail.com"
 	ProgrammerTG   = "https://t.me/ProfShafiei"
@@ -81,6 +81,19 @@ const (
 	LinuxServerAssetPattern = "abdal_4iproto_server_linux_{arch}"
 	LinuxPanelAssetPattern  = "abdal_4iproto_panel_linux_{arch}"
 	LinuxKeygenAssetPattern = "abdal_4iproto_server_ssh_keygen_linux_{arch}"
+
+	// Self-update asset patterns for the CLI itself. Windows uses
+	// hyphenated names with the .exe suffix, while Linux uses
+	// underscore-separated names with no extension.
+	WindowsCliAssetPattern = "abdal-4iproto-cli-windows-{arch}.exe"
+	LinuxCliAssetPattern   = "abdal_4iproto_cli_linux_{arch}"
+)
+
+// Canonical CLI binary names (without the OS extension). Used by the
+// self-update flow to derive the on-disk file name after download.
+const (
+	WindowsCliBinaryName = "abdal-4iproto-cli-windows"
+	LinuxCliBinaryName   = "abdal_4iproto_cli_linux"
 )
 
 // Service identifiers (systemd unit name on Linux, Windows service name).

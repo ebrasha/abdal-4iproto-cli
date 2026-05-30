@@ -66,6 +66,7 @@ service       status|restart|diagnostics --component server|panel
 config server Update server ports via --ports
 config panel  Update panel JSON via --port --username --password
 self-install  Copy CLI binary to system path as abdal-4iproto-cli
+self-update   Download the latest release from GitHub and replace the running binary
 help          This screen
 `))
 

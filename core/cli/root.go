@@ -71,6 +71,7 @@ func NewRoot() *cobra.Command {
 		newServiceCmd(),
 		newConfigCmd(),
 		newSelfInstallCmd(),
+		newSelfUpdateCmd(),
 		newHelpCmd(),
 	)
 

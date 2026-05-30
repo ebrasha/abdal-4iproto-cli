@@ -31,6 +31,7 @@ import (
 	"abdal-4iproto-cli/core/network"
 	"abdal-4iproto-cli/core/paths"
 	"abdal-4iproto-cli/core/selfinstall"
+	"abdal-4iproto-cli/core/selfupdate"
 	"abdal-4iproto-cli/core/service"
 	"abdal-4iproto-cli/core/ui"
 	"abdal-4iproto-cli/core/uninstaller"
@@ -51,7 +52,7 @@ func Run() error {
 			"Manage Users",
 			"Server Configuration",
 			"Panel Configuration",
-			"Install CLI Command (abdal-4iproto-cli)",
+			"Manage CLI Command (abdal-4iproto-cli)",
 			"Diagnostics",
 			"Help",
 			"Exit",
@@ -87,10 +88,9 @@ func Run() error {
 		case "Panel Configuration":
 			actionErr = handlePanelConfigMenu()
 			reportIfNotBack(actionErr, "Panel Config Failed")
-		case "Install CLI Command (abdal-4iproto-cli)":
-			if err := selfinstall.Install(); err != nil {
-				ui.ErrorBox("Self-Install Failed", err.Error())
-			}
+		case "Manage CLI Command (abdal-4iproto-cli)":
+			actionErr = handleManageCli()
+			reportIfNotBack(actionErr, "CLI Management Failed")
 		case "Diagnostics":
 			dir, _ := paths.InstallDir()
 			_ = service.Diagnostics(dir)
@@ -247,6 +247,48 @@ func handleServices() error {
 		return ui.ErrUserBack
 	default:
 		return service.Status(service.ComponentServer)
+	}
+}
+
+// handleManageCli renders the submenu that groups CLI lifecycle actions:
+// a system-wide install of the current binary and an in-place self-update
+// to the latest GitHub release. Picking "Back" returns silently to the
+// main menu without the post-action pause.
+func handleManageCli() error {
+	for {
+		ui.ClearAndBanner()
+		choice, err := ui.AskSelect("Manage CLI Command (abdal-4iproto-cli)", []string{
+			"Install CLI Command (abdal-4iproto-cli)",
+			"Update CLI Command (abdal-4iproto-cli)",
+			"Back",
+		}, "Install CLI Command (abdal-4iproto-cli)")
+		if err != nil {
+			if err == terminal.InterruptErr {
+				return ui.ErrUserBack
+			}
+			return err
+		}
+		if choice == "Back" {
+			return ui.ErrUserBack
+		}
+
+		ui.ClearAndBanner()
+		var subErr error
+		switch choice {
+		case "Install CLI Command (abdal-4iproto-cli)":
+			if installErr := selfinstall.Install(); installErr != nil {
+				ui.ErrorBox("Self-Install Failed", installErr.Error())
+				subErr = installErr
+			}
+		case "Update CLI Command (abdal-4iproto-cli)":
+			if updateErr := selfupdate.Update(); updateErr != nil {
+				ui.ErrorBox("Self-Update Failed", updateErr.Error())
+				subErr = updateErr
+			}
+		}
+		if !ui.IsBack(subErr) {
+			ui.PressEnter()
+		}
 	}
 }
 
@@ -861,7 +903,7 @@ Main Menu
   Manage Users  ──► List & View Users / Add User / Edit User / Remove User
   Server Configuration ──► View Configuration / Edit Configuration
   Panel Configuration  ──► View Configuration / Edit Configuration
-  Install CLI Command (abdal-4iproto-cli)
+  Manage CLI Command (abdal-4iproto-cli) ──► Install CLI / Update CLI / Back
   Diagnostics
   Help / Exit
 `))
@@ -874,6 +916,7 @@ abdal-4iproto-cli service status|restart --component server|panel
 abdal-4iproto-cli config server --ports 64235,64236
 abdal-4iproto-cli config panel --port 52202 --username ebrasha --password secret
 abdal-4iproto-cli self-install
+abdal-4iproto-cli self-update
 abdal-4iproto-cli help
 `))
 	ui.Box("Service Names", strings.TrimSpace(`
