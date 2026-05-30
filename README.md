@@ -30,6 +30,7 @@ Deploying the full **Abdal 4iProto** stack (Server + Web Panel + SSH KeyGen) by 
 - 🔄 **Auto-restart** – Services restart automatically after every config or user change.
 - 🧰 **Self-install** – Register itself as the global `abdal-4iproto-cli` command.
 - ⏱️ **Safe countdown** – Press `q` during the 5-second start countdown to abort.
+- 🆙 **Self-Update** – Automatically detects new GitHub releases, intelligently downloads the matching binary for your OS/architecture, and performs a secure upgrade with automatic rollback on failure.
 - 🆘 **Built-in help** – Every flag, command, and troubleshooting hint is one `help` away.
 
 ---
@@ -90,6 +91,9 @@ abdal-4iproto-cli config panel  --port 52202 --username ebrasha --password "new-
 
 # Self-install as global command
 abdal-4iproto-cli self-install
+
+# Self-update – fetch the latest release from GitHub, verify SHA-256, and replace the running binary
+abdal-4iproto-cli self-update
 
 # Uninstall – server service only (installation folder is preserved)
 abdal-4iproto-cli uninstall --server-only
