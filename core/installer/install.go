@@ -47,16 +47,19 @@ func Run(opts Options) error {
 		{"Component", targetLabel(opts.Target)},
 	})
 
-	// Detect a previous installation so we never silently overwrite state.
+	// Detect a previous installation so we never silently overwrite
+	// state. We only consider the components that belong to the
+	// requested scope: a "Server only" install must not be blocked by a
+	// pre-existing panel and vice-versa.
 	report, err := DetectExisting()
 	if err != nil {
 		return fmt.Errorf("detect existing installation: %w", err)
 	}
-	if report.IsPresent() {
+	if report.IsTargetPresent(opts.Target) {
 		if !opts.Force {
 			return ErrAlreadyInstalled
 		}
-		if err := FreshWipe(); err != nil {
+		if err := FreshWipeTarget(opts.Target); err != nil {
 			return fmt.Errorf("fresh-install wipe failed: %w", err)
 		}
 	}

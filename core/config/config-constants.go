@@ -23,7 +23,7 @@ package config
 const (
 	AppName        = "Abdal 4iProto Cli"
 	AppCommandName = "abdal-4iproto-cli"
-	AppVersion     = "2.2"
+	AppVersion     = "2.5"
 	ProgrammerName = "Ebrahim Shafiei (EbraSha)"
 	ProgrammerMail = "Prof.Shafiei@Gmail.com"
 	ProgrammerTG   = "https://t.me/ProfShafiei"

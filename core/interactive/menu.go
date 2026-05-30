@@ -121,34 +121,68 @@ func reportIfNotBack(err error, title string) {
 }
 
 func handleInstall() error {
-	// Block the workflow up front when an installation already exists
-	// so the operator must consciously decide between aborting and a
-	// fresh, state-wiping install.
+	// Always show the scope picker first so the operator can decide
+	// what to install. The fresh-install confirmation is requested
+	// later, and only for the specific component(s) the user picked.
+	opts, err := installer.PromptOptions(installer.DefaultOptions())
+	if err != nil {
+		return err
+	}
+
+	// Inspect the disk for any leftover of the requested scope. A
+	// "Server only" install must not be blocked by a pre-existing
+	// panel, and vice-versa, so the report is filtered by target.
 	report, err := installer.DetectExisting()
 	if err != nil {
 		return err
 	}
-	if report.IsPresent() {
-		ui.WarningBox("Existing Installation Detected", fmt.Sprintf(
-			"Abdal 4iProto components were found in:\n%s\n\nA fresh install will stop running services and DELETE every file under this directory before re-downloading.",
+	if report.IsTargetPresent(opts.Target) {
+		ui.WarningBox("Existing "+scopeLabel(opts.Target)+" Detected", fmt.Sprintf(
+			"%s\nLocation: %s\n\nA fresh install will stop the matching service(s) and DELETE only the files that belong to the %s before re-downloading.\nThe other component(s) on this host are left untouched.",
+			scopeDetectedMessage(opts.Target),
 			report.InstallDir,
+			scopeLabel(opts.Target),
 		))
-		confirm, err := ui.AskConfirm("Proceed with a fresh install (wipe + reinstall)?", false)
+		confirm, err := ui.AskConfirm(
+			fmt.Sprintf("Proceed with a fresh %s install (wipe + reinstall)?", strings.ToLower(scopeLabel(opts.Target))),
+			false,
+		)
 		if err != nil {
 			return err
 		}
 		if !confirm {
 			return ui.ErrUserBack
 		}
+		opts.Force = true
 	}
 
-	opts := installer.DefaultOptions()
-	opts.Force = report.IsPresent()
-	opts, err = installer.PromptOptions(opts)
-	if err != nil {
-		return err
-	}
 	return installer.Run(opts)
+}
+
+// scopeLabel renders the install target as a short human-readable label
+// used in confirmation prompts and warning boxes.
+func scopeLabel(t installer.Target) string {
+	switch t {
+	case installer.TargetServer:
+		return "Server"
+	case installer.TargetPanel:
+		return "Panel"
+	default:
+		return "Full Stack"
+	}
+}
+
+// scopeDetectedMessage returns the body text shown above the path when
+// a previous installation of the requested scope is found.
+func scopeDetectedMessage(t installer.Target) string {
+	switch t {
+	case installer.TargetServer:
+		return "An existing Abdal 4iProto Server (binary, keygen helper, or server configs) was found on this host."
+	case installer.TargetPanel:
+		return "An existing Abdal 4iProto Panel (binary or panel config) was found on this host."
+	default:
+		return "An existing full-stack installation (Server + Panel + KeyGen) was found on this host."
+	}
 }
 
 func handleUninstall() error {

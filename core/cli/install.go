@@ -91,7 +91,10 @@ func newInstallCmd() *cobra.Command {
 
 			if err := installer.Run(opts); err != nil {
 				if errors.Is(err, installer.ErrAlreadyInstalled) {
-					return fmt.Errorf("%w. Re-run with --force to wipe the previous installation and reinstall from scratch", err)
+					return fmt.Errorf(
+						"%w for the requested scope. Re-run with --force to wipe only the selected component(s) and reinstall from scratch",
+						err,
+					)
 				}
 				return err
 			}
