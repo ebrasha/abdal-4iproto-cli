@@ -40,7 +40,7 @@ import (
 
 // Run launches the interactive main menu (default when no flags are passed).
 func Run() error {
-	ui.PrintBanner()
+	ui.ClearAndBanner()
 	updatecheck.Notify()
 
 	for {
@@ -63,31 +63,30 @@ func Run() error {
 			return err
 		}
 
+		// Wipe the screen between transitions so each sub-flow starts on
+		// a clean canvas; the prior banner is re-printed for context.
+		ui.ClearAndBanner()
+
+		var actionErr error
 		switch choice {
 		case "Install Abdal 4iProto":
-			if err := handleInstall(); err != nil {
-				ui.ErrorBox("Install Failed", err.Error())
-			}
+			actionErr = handleInstall()
+			reportIfNotBack(actionErr, "Install Failed")
 		case "Uninstall Abdal 4iProto":
-			if err := handleUninstall(); err != nil {
-				ui.ErrorBox("Uninstall Failed", err.Error())
-			}
+			actionErr = handleUninstall()
+			reportIfNotBack(actionErr, "Uninstall Failed")
 		case "Manage Services":
-			if err := handleServices(); err != nil {
-				ui.ErrorBox("Service Error", err.Error())
-			}
+			actionErr = handleServices()
+			reportIfNotBack(actionErr, "Service Error")
 		case "Manage Users":
-			if err := handleManageUsers(); err != nil {
-				ui.ErrorBox("User Management Failed", err.Error())
-			}
+			actionErr = handleManageUsers()
+			reportIfNotBack(actionErr, "User Management Failed")
 		case "Server Configuration":
-			if err := handleServerConfigMenu(); err != nil {
-				ui.ErrorBox("Server Config Failed", err.Error())
-			}
+			actionErr = handleServerConfigMenu()
+			reportIfNotBack(actionErr, "Server Config Failed")
 		case "Panel Configuration":
-			if err := handlePanelConfigMenu(); err != nil {
-				ui.ErrorBox("Panel Config Failed", err.Error())
-			}
+			actionErr = handlePanelConfigMenu()
+			reportIfNotBack(actionErr, "Panel Config Failed")
 		case "Install CLI Command (abdal-4iproto-cli)":
 			if err := selfinstall.Install(); err != nil {
 				ui.ErrorBox("Self-Install Failed", err.Error())
@@ -98,16 +97,53 @@ func Run() error {
 		case "Help":
 			printInteractiveHelp()
 		case "Exit":
-			ui.Success("Goodbye.")
+			ui.Success("Goodbye! If you liked this tool, don't forget to star us on GitHub.")
+			ui.Success("Built by Abdal Security Group, Led by Ebrahim Shafiei (EbraSha).")
 			return nil
 		}
-		fmt.Println()
+
+		// Skip the post-action pause when the user explicitly asked to
+		// go back: they have already made the decision to leave.
+		if !ui.IsBack(actionErr) {
+			ui.PressEnter()
+		}
+		ui.ClearAndBanner()
 	}
 }
 
+// reportIfNotBack renders an error box only for genuine failures,
+// silently swallowing the ErrUserBack sentinel.
+func reportIfNotBack(err error, title string) {
+	if err == nil || ui.IsBack(err) {
+		return
+	}
+	ui.ErrorBox(title, err.Error())
+}
+
 func handleInstall() error {
+	// Block the workflow up front when an installation already exists
+	// so the operator must consciously decide between aborting and a
+	// fresh, state-wiping install.
+	report, err := installer.DetectExisting()
+	if err != nil {
+		return err
+	}
+	if report.IsPresent() {
+		ui.WarningBox("Existing Installation Detected", fmt.Sprintf(
+			"Abdal 4iProto components were found in:\n%s\n\nA fresh install will stop running services and DELETE every file under this directory before re-downloading.",
+			report.InstallDir,
+		))
+		confirm, err := ui.AskConfirm("Proceed with a fresh install (wipe + reinstall)?", false)
+		if err != nil {
+			return err
+		}
+		if !confirm {
+			return ui.ErrUserBack
+		}
+	}
+
 	opts := installer.DefaultOptions()
-	var err error
+	opts.Force = report.IsPresent()
 	opts, err = installer.PromptOptions(opts)
 	if err != nil {
 		return err
@@ -120,9 +156,13 @@ func handleUninstall() error {
 		"Full stack",
 		"Server only",
 		"Panel only",
+		"Back",
 	}, "Full stack")
 	if err != nil {
 		return err
+	}
+	if scope == "Back" {
+		return ui.ErrUserBack
 	}
 
 	var target uninstaller.Target
@@ -160,6 +200,7 @@ func handleServices() error {
 		"Restart Server",
 		"Restart Panel",
 		"Diagnostics bundle",
+		"Back",
 	}, "Status (Server)")
 	if err != nil {
 		return err
@@ -174,6 +215,8 @@ func handleServices() error {
 	case "Diagnostics bundle":
 		dir, _ := paths.InstallDir()
 		return service.Diagnostics(dir)
+	case "Back":
+		return ui.ErrUserBack
 	default:
 		return service.Status(service.ComponentServer)
 	}
@@ -182,6 +225,7 @@ func handleServices() error {
 // handleManageUsers renders the user-management submenu.
 func handleManageUsers() error {
 	for {
+		ui.ClearAndBanner()
 		choice, err := ui.AskSelect("Manage Users", []string{
 			"List & View Users",
 			"Add User",
@@ -191,31 +235,33 @@ func handleManageUsers() error {
 		}, "List & View Users")
 		if err != nil {
 			if err == terminal.InterruptErr {
-				return nil
+				return ui.ErrUserBack
 			}
 			return err
 		}
+		if choice == "Back" {
+			return ui.ErrUserBack
+		}
+
+		ui.ClearAndBanner()
+		var subErr error
 		switch choice {
 		case "List & View Users":
-			if err := handleListUsers(); err != nil {
-				ui.ErrorBox("List Users Failed", err.Error())
-			}
+			subErr = handleListUsers()
+			reportIfNotBack(subErr, "List Users Failed")
 		case "Add User":
-			if err := handleAddUser(); err != nil {
-				ui.ErrorBox("Add User Failed", err.Error())
-			}
+			subErr = handleAddUser()
+			reportIfNotBack(subErr, "Add User Failed")
 		case "Edit User":
-			if err := handleEditUser(); err != nil {
-				ui.ErrorBox("Edit User Failed", err.Error())
-			}
+			subErr = handleEditUser()
+			reportIfNotBack(subErr, "Edit User Failed")
 		case "Remove User":
-			if err := handleRemoveUser(); err != nil {
-				ui.ErrorBox("Remove User Failed", err.Error())
-			}
-		case "Back":
-			return nil
+			subErr = handleRemoveUser()
+			reportIfNotBack(subErr, "Remove User Failed")
 		}
-		fmt.Println()
+		if !ui.IsBack(subErr) {
+			ui.PressEnter()
+		}
 	}
 }
 
@@ -237,13 +283,12 @@ func handleEditUser() error {
 	choice, err := ui.AskSelect("Select a user to edit", options, names[0])
 	if err != nil {
 		if err == terminal.InterruptErr {
-			return nil
+			return ui.ErrUserBack
 		}
 		return err
 	}
 	if choice == "Cancel" {
-		ui.Info("Edit cancelled.")
-		return nil
+		return ui.ErrUserBack
 	}
 
 	account, err := users.GetUser(choice)
@@ -341,13 +386,11 @@ func handleEditUser() error {
 			ui.WarningBox("Confirm Update", fmt.Sprintf("Save changes for user '%s' and restart the server service?", account.Username))
 			ok, err := ui.AskConfirm("Apply changes?", true)
 			if err != nil || !ok {
-				ui.Info("Edit cancelled.")
-				return nil
+				return ui.ErrUserBack
 			}
 			return users.UpdateUser(in)
 		case "Cancel":
-			ui.Info("Edit cancelled.")
-			return nil
+			return ui.ErrUserBack
 		}
 	}
 }
@@ -400,12 +443,12 @@ func handleListUsers() error {
 		choice, err := ui.AskSelect("Select a user to view details", options, names[0])
 		if err != nil {
 			if err == terminal.InterruptErr {
-				return nil
+				return ui.ErrUserBack
 			}
 			return err
 		}
 		if choice == "Back" {
-			return nil
+			return ui.ErrUserBack
 		}
 		account, err := users.GetUser(choice)
 		if err != nil {
@@ -521,13 +564,12 @@ func handleRemoveUser() error {
 	choice, err := ui.AskSelect("Select a user to remove", options, names[0])
 	if err != nil {
 		if err == terminal.InterruptErr {
-			return nil
+			return ui.ErrUserBack
 		}
 		return err
 	}
 	if choice == "Cancel" {
-		ui.Info("Removal cancelled.")
-		return nil
+		return ui.ErrUserBack
 	}
 
 	// Show full record so the admin can verify before deletion.
@@ -539,13 +581,12 @@ func handleRemoveUser() error {
 	ok, err := ui.AskConfirm(fmt.Sprintf("Are you sure you want to remove '%s'?", choice), false)
 	if err != nil {
 		if err == terminal.InterruptErr {
-			return nil
+			return ui.ErrUserBack
 		}
 		return err
 	}
 	if !ok {
-		ui.Info("Removal cancelled.")
-		return nil
+		return ui.ErrUserBack
 	}
 
 	// users.RemoveUser updates users.json and restarts the server service.
@@ -556,6 +597,7 @@ func handleRemoveUser() error {
 // server_config.json under a single submenu.
 func handleServerConfigMenu() error {
 	for {
+		ui.ClearAndBanner()
 		choice, err := ui.AskSelect("Server Configuration", []string{
 			"View Configuration",
 			"Edit Configuration",
@@ -563,23 +605,27 @@ func handleServerConfigMenu() error {
 		}, "View Configuration")
 		if err != nil {
 			if err == terminal.InterruptErr {
-				return nil
+				return ui.ErrUserBack
 			}
 			return err
 		}
+		if choice == "Back" {
+			return ui.ErrUserBack
+		}
+
+		ui.ClearAndBanner()
+		var subErr error
 		switch choice {
 		case "View Configuration":
-			if err := handleViewServerConfig(); err != nil {
-				ui.ErrorBox("View Server Config Failed", err.Error())
-			}
+			subErr = handleViewServerConfig()
+			reportIfNotBack(subErr, "View Server Config Failed")
 		case "Edit Configuration":
-			if err := handleEditServerConfig(); err != nil {
-				ui.ErrorBox("Edit Server Config Failed", err.Error())
-			}
-		case "Back":
-			return nil
+			subErr = handleEditServerConfig()
+			reportIfNotBack(subErr, "Edit Server Config Failed")
 		}
-		fmt.Println()
+		if !ui.IsBack(subErr) {
+			ui.PressEnter()
+		}
 	}
 }
 
@@ -587,6 +633,7 @@ func handleServerConfigMenu() error {
 // abdal-4iproto-panel.json under a single submenu.
 func handlePanelConfigMenu() error {
 	for {
+		ui.ClearAndBanner()
 		choice, err := ui.AskSelect("Panel Configuration", []string{
 			"View Configuration",
 			"Edit Configuration",
@@ -594,23 +641,27 @@ func handlePanelConfigMenu() error {
 		}, "View Configuration")
 		if err != nil {
 			if err == terminal.InterruptErr {
-				return nil
+				return ui.ErrUserBack
 			}
 			return err
 		}
+		if choice == "Back" {
+			return ui.ErrUserBack
+		}
+
+		ui.ClearAndBanner()
+		var subErr error
 		switch choice {
 		case "View Configuration":
-			if err := handleViewPanelConfig(); err != nil {
-				ui.ErrorBox("View Panel Config Failed", err.Error())
-			}
+			subErr = handleViewPanelConfig()
+			reportIfNotBack(subErr, "View Panel Config Failed")
 		case "Edit Configuration":
-			if err := handleEditPanelConfig(); err != nil {
-				ui.ErrorBox("Edit Panel Config Failed", err.Error())
-			}
-		case "Back":
-			return nil
+			subErr = handleEditPanelConfig()
+			reportIfNotBack(subErr, "Edit Panel Config Failed")
 		}
-		fmt.Println()
+		if !ui.IsBack(subErr) {
+			ui.PressEnter()
+		}
 	}
 }
 
@@ -655,11 +706,43 @@ func handleViewPanelConfig() error {
 		{"Blocked IPs", joinOrDash(cfg.BlockedIPs)},
 	})
 
+	ui.KeyValueBox("Telegram Bot", [][2]string{
+		{"Status", boolLabel(cfg.TelegramBot.Enabled)},
+		{"Token", maskToken(cfg.TelegramBot.Token)},
+		{"Admins", joinAdmins(cfg.TelegramBot.Admins)},
+	})
+
 	showPass, err := ui.AskConfirm("Reveal panel password in clear text?", false)
 	if err == nil && showPass {
 		ui.Box("Panel Password (clear text)", cfg.Password)
 	}
 	return nil
+}
+
+// maskToken hides the body of the Telegram bot token while keeping a few
+// characters at the start and end so the admin can recognise it.
+func maskToken(t string) string {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return "— (not configured)"
+	}
+	if len(t) <= 8 {
+		return strings.Repeat("•", len(t))
+	}
+	return t[:4] + strings.Repeat("•", len(t)-8) + t[len(t)-4:]
+}
+
+// joinAdmins renders the list of admin Telegram IDs, returning an em dash
+// when the slice is empty so the value column never looks blank.
+func joinAdmins(ids []int64) string {
+	if len(ids) == 0 {
+		return "—"
+	}
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, fmt.Sprintf("%d", id))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // boolLabel returns a human-readable label for a boolean configuration.

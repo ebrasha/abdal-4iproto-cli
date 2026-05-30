@@ -19,6 +19,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -42,6 +43,7 @@ func newInstallCmd() *cobra.Command {
 		keyForce      bool
 		keyFile       string
 		noServices    bool
+		forceFresh    bool
 	)
 
 	cmd := &cobra.Command{
@@ -53,6 +55,7 @@ func newInstallCmd() *cobra.Command {
 			opts.PanelUsername = panelUser
 			opts.PanelPassword = panelPass
 			opts.InstallServices = !noServices
+			opts.Force = forceFresh
 			opts.Keygen = keygen.Options{
 				Type: keyType, Bits: keyBits, Force: keyForce, OutputFile: keyFile,
 			}
@@ -86,7 +89,13 @@ func newInstallCmd() *cobra.Command {
 				}
 			}
 
-			return installer.Run(opts)
+			if err := installer.Run(opts); err != nil {
+				if errors.Is(err, installer.ErrAlreadyInstalled) {
+					return fmt.Errorf("%w. Re-run with --force to wipe the previous installation and reinstall from scratch", err)
+				}
+				return err
+			}
+			return nil
 		},
 	}
 
@@ -101,6 +110,7 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&keyForce, "key-force", config.DefaultKeygenForce, "Overwrite existing SSH key files")
 	cmd.Flags().StringVar(&keyFile, "key-file", config.DefaultKeyBaseName, "SSH private key output filename")
 	cmd.Flags().BoolVar(&noServices, "no-services", false, "Skip systemd/sc service registration")
+	cmd.Flags().BoolVar(&forceFresh, "force", false, "Wipe an existing installation and perform a fresh install")
 
 	return cmd
 }

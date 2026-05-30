@@ -28,15 +28,22 @@ import (
 	"abdal-4iproto-cli/core/ui"
 )
 
-// PromptOptions interactively collects installation parameters.
+// PromptOptions interactively collects installation parameters. When
+// the operator picks the "Back" entry the function returns the
+// ui.ErrUserBack sentinel so the caller can quietly bubble up to the
+// previous menu without asking any extra confirmation.
 func PromptOptions(base Options) (Options, error) {
 	targetChoice, err := ui.AskSelect("Installation scope", []string{
 		"Full stack (Server + Panel + KeyGen)",
 		"Server only",
 		"Panel only",
+		"Back",
 	}, "Full stack (Server + Panel + KeyGen)")
 	if err != nil {
 		return base, err
+	}
+	if targetChoice == "Back" {
+		return base, ui.ErrUserBack
 	}
 	switch targetChoice {
 	case "Server only":

@@ -39,6 +39,9 @@ type Options struct {
 	Keygen          keygen.Options
 	InstallServices bool
 	SkipKeygen      bool
+	// Force performs a fresh install: the existing installation directory
+	// and any registered services are removed before starting again.
+	Force bool
 }
 
 // DefaultOptions returns sane defaults for a full stack install.

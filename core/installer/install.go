@@ -47,6 +47,20 @@ func Run(opts Options) error {
 		{"Component", targetLabel(opts.Target)},
 	})
 
+	// Detect a previous installation so we never silently overwrite state.
+	report, err := DetectExisting()
+	if err != nil {
+		return fmt.Errorf("detect existing installation: %w", err)
+	}
+	if report.IsPresent() {
+		if !opts.Force {
+			return ErrAlreadyInstalled
+		}
+		if err := FreshWipe(); err != nil {
+			return fmt.Errorf("fresh-install wipe failed: %w", err)
+		}
+	}
+
 	// Suggest server ports when none were provided (interactive/CLI may set them).
 	if (opts.Target == TargetAll || opts.Target == TargetServer) && len(opts.ServerPorts) == 0 {
 		suggested, err := network.SuggestFreePorts(config.ServerSuggestedCount)

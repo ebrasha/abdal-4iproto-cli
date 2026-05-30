@@ -59,17 +59,27 @@ type UserAccount struct {
 	MaxTotalMB      int      `json:"max_total_mb"`
 }
 
+// TelegramBotConfig holds the Telegram bot integration block of the
+// panel configuration file. The bot is disabled out of the box; the
+// operator activates it after pasting a token and adding admin IDs.
+type TelegramBotConfig struct {
+	Enabled bool    `json:"enabled"`
+	Token   string  `json:"token"`
+	Admins  []int64 `json:"admins"`
+}
+
 // PanelConfig mirrors abdal-4iproto-panel.json.
 type PanelConfig struct {
-	Port               int      `json:"port"`
-	Username           string   `json:"username"`
-	Password           string   `json:"password"`
-	Logging            bool     `json:"logging"`
-	BlockedIPs         []string `json:"blocked_ips"`
-	MaxLoginAttempts   int      `json:"max_login_attempts"`
-	LoginAttemptWindow int      `json:"login_attempt_window"`
-	BlockDuration      int      `json:"block_duration"`
-	Theme              string   `json:"theme"`
+	Port               int               `json:"port"`
+	Username           string            `json:"username"`
+	Password           string            `json:"password"`
+	Logging            bool              `json:"logging"`
+	BlockedIPs         []string          `json:"blocked_ips"`
+	MaxLoginAttempts   int               `json:"max_login_attempts"`
+	LoginAttemptWindow int               `json:"login_attempt_window"`
+	BlockDuration      int               `json:"block_duration"`
+	Theme              string            `json:"theme"`
+	TelegramBot        TelegramBotConfig `json:"telegram_bot"`
 }
 
 // KeyFileNames holds the private/public key filenames written by keygen.
@@ -144,7 +154,9 @@ func WriteUsers(installDir string) error {
 	return writeJSON(filepath.Join(installDir, config.UsersFileName), users)
 }
 
-// WritePanelConfig creates abdal-4iproto-panel.json.
+// WritePanelConfig creates abdal-4iproto-panel.json. The Telegram bot
+// section is always written with safe defaults (disabled, no token,
+// empty admins) so operators get a discoverable block to fill in later.
 func WritePanelConfig(installDir string, port int, username, password string) error {
 	cfg := PanelConfig{
 		Port:               port,
@@ -156,6 +168,11 @@ func WritePanelConfig(installDir string, port int, username, password string) er
 		LoginAttemptWindow: config.DefaultLoginAttemptWindow,
 		BlockDuration:      config.DefaultBlockDurationSeconds,
 		Theme:              config.DefaultPanelTheme,
+		TelegramBot: TelegramBotConfig{
+			Enabled: config.DefaultTelegramBotEnabled,
+			Token:   config.DefaultTelegramBotToken,
+			Admins:  []int64{},
+		},
 	}
 	return writeJSON(filepath.Join(installDir, config.PanelConfigFileName), cfg)
 }

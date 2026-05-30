@@ -23,7 +23,7 @@ package config
 const (
 	AppName        = "Abdal 4iProto Cli"
 	AppCommandName = "abdal-4iproto-cli"
-	AppVersion     = "1.6"
+	AppVersion     = "2.2"
 	ProgrammerName = "Ebrahim Shafiei (EbraSha)"
 	ProgrammerMail = "Prof.Shafiei@Gmail.com"
 	ProgrammerTG   = "https://t.me/ProfShafiei"
@@ -171,4 +171,12 @@ const (
 	DefaultLoginAttemptWindow   = 300
 	DefaultBlockDurationSeconds = 36000
 	DefaultPanelTheme           = "ebrasha-dark"
+)
+
+// Default Telegram bot integration values for the panel. The bot is
+// disabled out of the box; the operator turns it on after pasting a
+// token and listing the admin Telegram user IDs.
+const (
+	DefaultTelegramBotEnabled = false
+	DefaultTelegramBotToken   = ""
 )
