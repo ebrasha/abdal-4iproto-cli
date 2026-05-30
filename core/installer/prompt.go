@@ -28,11 +28,11 @@ import (
 	"abdal-4iproto-cli/core/ui"
 )
 
-// PromptOptions interactively collects installation parameters. When
-// the operator picks the "Back" entry the function returns the
-// ui.ErrUserBack sentinel so the caller can quietly bubble up to the
-// previous menu without asking any extra confirmation.
-func PromptOptions(base Options) (Options, error) {
+// PromptTarget asks the operator which install scope they want and
+// returns Options with only Target populated. A "Back" selection bubbles
+// up as ui.ErrUserBack so the parent menu can return quietly without an
+// extra confirmation step.
+func PromptTarget(base Options) (Options, error) {
 	targetChoice, err := ui.AskSelect("Installation scope", []string{
 		"Full stack (Server + Panel + KeyGen)",
 		"Server only",
@@ -53,7 +53,29 @@ func PromptOptions(base Options) (Options, error) {
 	default:
 		base.Target = TargetAll
 	}
+	return base, nil
+}
 
+// PromptOptions interactively collects installation parameters. When
+// the operator picks the "Back" entry the function returns the
+// ui.ErrUserBack sentinel so the caller can quietly bubble up to the
+// previous menu without asking any extra confirmation.
+//
+// This is a thin wrapper around PromptTarget + PromptInstallDetails kept
+// for backward compatibility with callers that prefer a single entry.
+func PromptOptions(base Options) (Options, error) {
+	base, err := PromptTarget(base)
+	if err != nil {
+		return base, err
+	}
+	return PromptInstallDetails(base)
+}
+
+// PromptInstallDetails collects every install parameter except the
+// target, which must already be set on base. Splitting this out lets the
+// interactive menu confirm a scope-aware fresh install *before* asking
+// for ports, panel credentials or keygen options.
+func PromptInstallDetails(base Options) (Options, error) {
 	if base.Target == TargetAll || base.Target == TargetServer {
 		suggested, err := network.SuggestFreePorts(config.ServerSuggestedCount)
 		if err != nil {

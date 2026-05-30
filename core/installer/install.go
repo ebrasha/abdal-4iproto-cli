@@ -47,19 +47,18 @@ func Run(opts Options) error {
 		{"Component", targetLabel(opts.Target)},
 	})
 
-	// Detect a previous installation so we never silently overwrite
-	// state. We only consider the components that belong to the
-	// requested scope: a "Server only" install must not be blocked by a
-	// pre-existing panel and vice-versa.
+	// Detect a previous installation for the *requested scope* so we
+	// never silently overwrite state and never block the operator on
+	// artefacts that belong to a different component.
 	report, err := DetectExisting()
 	if err != nil {
 		return fmt.Errorf("detect existing installation: %w", err)
 	}
-	if report.IsTargetPresent(opts.Target) {
+	if report.MatchesTarget(opts.Target) {
 		if !opts.Force {
 			return ErrAlreadyInstalled
 		}
-		if err := FreshWipeTarget(opts.Target); err != nil {
+		if err := FreshWipeFor(opts.Target); err != nil {
 			return fmt.Errorf("fresh-install wipe failed: %w", err)
 		}
 	}
@@ -110,8 +109,39 @@ func Run(opts Options) error {
 		}
 	}
 
+	// Explicit, scope-aware service restart so the freshly installed
+	// binary takes effect immediately. A Panel-only install must never
+	// disturb the Server service (and vice versa).
+	if opts.InstallServices {
+		restartServicesForTarget(opts.Target)
+	}
+
 	ui.SuccessBox("Installation Complete", "Abdal 4iProto components are ready in:\n"+installDir)
 	return nil
+}
+
+// restartServicesForTarget cycles only the services that belong to the
+// requested install scope so co-installed components keep running
+// undisturbed. Errors are logged but never abort the install because the
+// binaries are already in place at this point.
+func restartServicesForTarget(target Target) {
+	switch target {
+	case TargetServer:
+		if err := service.Restart(service.ComponentServer); err != nil {
+			ui.Warning(fmt.Sprintf("Server service restart failed: %v", err))
+		}
+	case TargetPanel:
+		if err := service.Restart(service.ComponentPanel); err != nil {
+			ui.Warning(fmt.Sprintf("Panel service restart failed: %v", err))
+		}
+	default:
+		if err := service.Restart(service.ComponentServer); err != nil {
+			ui.Warning(fmt.Sprintf("Server service restart failed: %v", err))
+		}
+		if err := service.Restart(service.ComponentPanel); err != nil {
+			ui.Warning(fmt.Sprintf("Panel service restart failed: %v", err))
+		}
+	}
 }
 
 func validatePortsBeforeDownload(opts Options) error {

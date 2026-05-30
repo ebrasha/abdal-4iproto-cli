@@ -37,50 +37,48 @@ import (
 var ErrAlreadyInstalled = errors.New("Abdal 4iProto is already installed on this host")
 
 // ExistingInstallReport summarises the state of a previous installation.
-// Configs are split into server-side and panel-side so the workflow can
-// reason about each component independently.
 type ExistingInstallReport struct {
-	InstallDir       string
-	HasServerBin     bool
-	HasPanelBin      bool
-	HasKeygenBin     bool
-	HasServerConfigs bool
-	HasPanelConfig   bool
-	// HasConfigs preserves the original "any config file present" flag
-	// for callers that do not care about the per-component split.
-	HasConfigs bool
+	InstallDir   string
+	HasServerBin bool
+	HasPanelBin  bool
+	HasKeygenBin bool
+	HasConfigs   bool
 }
 
 // IsPresent reports whether any installation artefact was found.
+// Kept for callers that need a coarse "anything left behind" answer.
 func (r ExistingInstallReport) IsPresent() bool {
 	return r.HasServerBin || r.HasPanelBin || r.HasKeygenBin || r.HasConfigs
 }
 
-// HasServerStack reports whether any server-side artefact (binary,
-// keygen helper, server_config.json, blocked_ips.json or users.json)
-// is present on disk. This is the unit that "Server only" installs and
-// uninstalls operate on.
-func (r ExistingInstallReport) HasServerStack() bool {
-	return r.HasServerBin || r.HasKeygenBin || r.HasServerConfigs
+// IsServerPresent reports whether the server-side artefacts exist on disk.
+func (r ExistingInstallReport) IsServerPresent() bool {
+	return r.HasServerBin
 }
 
-// HasPanelStack reports whether any panel-side artefact (binary or
-// abdal-4iproto-panel.json) is present on disk.
-func (r ExistingInstallReport) HasPanelStack() bool {
-	return r.HasPanelBin || r.HasPanelConfig
+// IsPanelPresent reports whether the panel-side artefacts exist on disk.
+func (r ExistingInstallReport) IsPanelPresent() bool {
+	return r.HasPanelBin
 }
 
-// IsTargetPresent reports whether the components that belong to the
-// requested install scope already exist on disk. It is used to decide
-// per-scope whether a "fresh install" confirmation is required.
-func (r ExistingInstallReport) IsTargetPresent(t Target) bool {
-	switch t {
+// IsFullStackPresent returns true only when *every* binary of the full
+// stack (server, panel and keygen) is already installed, so the operator
+// is never blocked just because a single partial component was left over.
+func (r ExistingInstallReport) IsFullStackPresent() bool {
+	return r.HasServerBin && r.HasPanelBin && r.HasKeygenBin
+}
+
+// MatchesTarget tells whether the artefacts that belong to the requested
+// install scope already exist. The interactive flow uses this to decide
+// when the fresh-install confirmation prompt is appropriate.
+func (r ExistingInstallReport) MatchesTarget(target Target) bool {
+	switch target {
 	case TargetServer:
-		return r.HasServerStack()
+		return r.IsServerPresent()
 	case TargetPanel:
-		return r.HasPanelStack()
+		return r.IsPanelPresent()
 	default:
-		return r.HasServerStack() && r.HasPanelStack()
+		return r.IsFullStackPresent()
 	}
 }
 
@@ -103,16 +101,15 @@ func DetectExisting() (ExistingInstallReport, error) {
 	rep.HasServerBin = pathExists(paths.ServerBinaryPath(dir))
 	rep.HasPanelBin = pathExists(paths.PanelBinaryPath(dir))
 	rep.HasKeygenBin = pathExists(paths.KeygenBinaryPath(dir))
-	rep.HasServerConfigs = pathExists(filepath.Join(dir, config.ServerConfigFileName)) ||
-		pathExists(filepath.Join(dir, config.UsersFileName)) ||
-		pathExists(filepath.Join(dir, config.BlockedIPsFileName))
-	rep.HasPanelConfig = pathExists(filepath.Join(dir, config.PanelConfigFileName))
-	rep.HasConfigs = rep.HasServerConfigs || rep.HasPanelConfig
+	rep.HasConfigs = pathExists(filepath.Join(dir, config.ServerConfigFileName)) ||
+		pathExists(filepath.Join(dir, config.PanelConfigFileName)) ||
+		pathExists(filepath.Join(dir, config.UsersFileName))
 	return rep, nil
 }
 
-// FreshWipe stops registered services and deletes the install directory
-// so a Force install can start from a clean slate.
+// FreshWipe stops every registered service and deletes the install
+// directory so a full-stack Force install starts from a clean slate.
+// Use FreshWipeFor when the operator picked a partial scope.
 func FreshWipe() error {
 	ui.Info("Performing fresh-install wipe: stopping services and clearing the installation directory.")
 	_ = service.Uninstall(service.ComponentPanel)
@@ -120,11 +117,12 @@ func FreshWipe() error {
 	return uninstaller.Run(uninstaller.TargetAll, true)
 }
 
-// FreshWipeTarget removes only the artefacts that belong to the
-// requested install scope so a fresh re-install of one component does
-// not destroy the other. For TargetAll it delegates to FreshWipe.
-func FreshWipeTarget(t Target) error {
-	switch t {
+// FreshWipeFor performs a scope-aware fresh wipe. The full-stack scope
+// drops the entire install directory, while partial scopes (server or
+// panel) clean only their own files so the co-installed component keeps
+// working without losing its data.
+func FreshWipeFor(target Target) error {
+	switch target {
 	case TargetServer:
 		return freshWipeServer()
 	case TargetPanel:
@@ -134,68 +132,61 @@ func FreshWipeTarget(t Target) error {
 	}
 }
 
-// freshWipeServer removes the server service, server/keygen binaries
-// and the server-side config files but keeps the panel artefacts intact.
+// freshWipeServer removes the server service plus every server-side file
+// (server and keygen binaries, generated SSH keys, server_config.json,
+// users.json and blocked_ips.json). The shared install directory and any
+// panel artefacts are left intact.
 func freshWipeServer() error {
-	ui.Info("Performing server-only fresh wipe: stopping server service and clearing server files.")
+	ui.Info("Performing fresh-install wipe for the server scope: stopping the server service and clearing server files.")
 	_ = service.Uninstall(service.ComponentServer)
 
 	dir, err := paths.InstallDir()
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(dir); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+	candidates := []string{
+		paths.ServerBinaryPath(dir),
+		paths.KeygenBinaryPath(dir),
+		filepath.Join(dir, config.ServerConfigFileName),
+		filepath.Join(dir, config.UsersFileName),
+		filepath.Join(dir, config.BlockedIPsFileName),
+		filepath.Join(dir, config.DefaultKeyBaseName),
+		filepath.Join(dir, config.DefaultKeyPublicName),
 	}
-
-	// Remove the server runtime, keygen helper and any generated keys.
-	removeIfExists(paths.ServerBinaryPath(dir))
-	removeIfExists(paths.KeygenBinaryPath(dir))
-	removeIfExists(filepath.Join(dir, config.DefaultKeyBaseName))
-	removeIfExists(filepath.Join(dir, config.DefaultKeyPublicName))
-
-	// Wipe the JSON files that belong exclusively to the server.
-	removeIfExists(filepath.Join(dir, config.ServerConfigFileName))
-	removeIfExists(filepath.Join(dir, config.UsersFileName))
-	removeIfExists(filepath.Join(dir, config.BlockedIPsFileName))
+	removeIfPresent(candidates)
+	ui.Success("Server artefacts cleared. Panel binary and configuration kept intact.")
 	return nil
 }
 
-// freshWipePanel removes the panel service, panel binary and the panel
-// config file while leaving server-side files untouched.
+// freshWipePanel removes the panel service and its files (panel binary
+// and abdal-4iproto-panel.json). The shared install directory and any
+// server artefacts (binaries, keys, users.json) are left intact.
 func freshWipePanel() error {
-	ui.Info("Performing panel-only fresh wipe: stopping panel service and clearing panel files.")
+	ui.Info("Performing fresh-install wipe for the panel scope: stopping the panel service and clearing panel files.")
 	_ = service.Uninstall(service.ComponentPanel)
 
 	dir, err := paths.InstallDir()
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(dir); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+	candidates := []string{
+		paths.PanelBinaryPath(dir),
+		filepath.Join(dir, config.PanelConfigFileName),
 	}
-
-	removeIfExists(paths.PanelBinaryPath(dir))
-	removeIfExists(filepath.Join(dir, config.PanelConfigFileName))
+	removeIfPresent(candidates)
+	ui.Success("Panel artefacts cleared. Server binary, keys and configuration kept intact.")
 	return nil
 }
 
-// removeIfExists deletes a file or directory when present and ignores
-// the "not exist" case so the caller can stay declarative.
-func removeIfExists(p string) {
-	if p == "" {
-		return
+// removeIfPresent silently deletes every existing file in the list;
+// missing entries are ignored because partial installs may not contain
+// every artefact we know about.
+func removeIfPresent(files []string) {
+	for _, p := range files {
+		if _, err := os.Stat(p); err == nil {
+			_ = os.Remove(p)
+		}
 	}
-	if _, err := os.Stat(p); err != nil {
-		return
-	}
-	_ = os.RemoveAll(p)
 }
 
 func pathExists(p string) bool {

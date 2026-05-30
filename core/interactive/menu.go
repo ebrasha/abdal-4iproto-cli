@@ -121,32 +121,25 @@ func reportIfNotBack(err error, title string) {
 }
 
 func handleInstall() error {
-	// Always show the scope picker first so the operator can decide
-	// what to install. The fresh-install confirmation is requested
-	// later, and only for the specific component(s) the user picked.
-	opts, err := installer.PromptOptions(installer.DefaultOptions())
+	// Ask the installation scope first so the existence check below can
+	// match the operator's intent precisely. Picking "Back" returns
+	// silently to the main menu.
+	opts := installer.DefaultOptions()
+	opts, err := installer.PromptTarget(opts)
 	if err != nil {
 		return err
 	}
 
-	// Inspect the disk for any leftover of the requested scope. A
-	// "Server only" install must not be blocked by a pre-existing
-	// panel, and vice-versa, so the report is filtered by target.
+	// Only warn when the artefacts that belong to the chosen scope are
+	// already present. A leftover panel must not block a fresh server
+	// install (and vice versa).
 	report, err := installer.DetectExisting()
 	if err != nil {
 		return err
 	}
-	if report.IsTargetPresent(opts.Target) {
-		ui.WarningBox("Existing "+scopeLabel(opts.Target)+" Detected", fmt.Sprintf(
-			"%s\nLocation: %s\n\nA fresh install will stop the matching service(s) and DELETE only the files that belong to the %s before re-downloading.\nThe other component(s) on this host are left untouched.",
-			scopeDetectedMessage(opts.Target),
-			report.InstallDir,
-			scopeLabel(opts.Target),
-		))
-		confirm, err := ui.AskConfirm(
-			fmt.Sprintf("Proceed with a fresh %s install (wipe + reinstall)?", strings.ToLower(scopeLabel(opts.Target))),
-			false,
-		)
+	if report.MatchesTarget(opts.Target) {
+		ui.WarningBox("Existing Installation Detected", buildScopeWarning(opts.Target, report.InstallDir))
+		confirm, err := ui.AskConfirm("Proceed with a fresh install (wipe + reinstall)?", false)
 		if err != nil {
 			return err
 		}
@@ -156,32 +149,33 @@ func handleInstall() error {
 		opts.Force = true
 	}
 
+	opts, err = installer.PromptInstallDetails(opts)
+	if err != nil {
+		return err
+	}
 	return installer.Run(opts)
 }
 
-// scopeLabel renders the install target as a short human-readable label
-// used in confirmation prompts and warning boxes.
-func scopeLabel(t installer.Target) string {
-	switch t {
+// buildScopeWarning returns a context-aware message that describes
+// exactly which files and services the fresh install will touch so the
+// operator can never be surprised about side-effects.
+func buildScopeWarning(target installer.Target, dir string) string {
+	switch target {
 	case installer.TargetServer:
-		return "Server"
+		return fmt.Sprintf(
+			"Abdal 4iProto Server is already installed in:\n%s\n\nA fresh install will stop and remove ONLY the server service and its files (server binary, keygen binary, SSH keys, server_config.json, users.json, blocked_ips.json). The panel and its data will be preserved.",
+			dir,
+		)
 	case installer.TargetPanel:
-		return "Panel"
+		return fmt.Sprintf(
+			"Abdal 4iProto Panel is already installed in:\n%s\n\nA fresh install will stop and remove ONLY the panel service and its files (panel binary, abdal-4iproto-panel.json). The server and its data will be preserved.",
+			dir,
+		)
 	default:
-		return "Full Stack"
-	}
-}
-
-// scopeDetectedMessage returns the body text shown above the path when
-// a previous installation of the requested scope is found.
-func scopeDetectedMessage(t installer.Target) string {
-	switch t {
-	case installer.TargetServer:
-		return "An existing Abdal 4iProto Server (binary, keygen helper, or server configs) was found on this host."
-	case installer.TargetPanel:
-		return "An existing Abdal 4iProto Panel (binary or panel config) was found on this host."
-	default:
-		return "An existing full-stack installation (Server + Panel + KeyGen) was found on this host."
+		return fmt.Sprintf(
+			"Abdal 4iProto full stack (Server + Panel + KeyGen) is already installed in:\n%s\n\nA fresh install will stop every service and DELETE every file under this directory before re-downloading.",
+			dir,
+		)
 	}
 }
 

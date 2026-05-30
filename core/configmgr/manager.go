@@ -139,8 +139,9 @@ func UpdatePanelConfig(port int, username, password string, logging *bool) error
 		return err
 	}
 	ui.Success("Panel configuration updated")
-	// Requirement: restart the server service after panel JSON changes.
-	return service.Restart(service.ComponentServer)
+	// Restart only the panel service so the new port/credentials take
+	// effect immediately without disturbing the running server service.
+	return service.Restart(service.ComponentPanel)
 }
 
 func loadServerConfig(path string) (*filesgen.ServerConfig, error) {
