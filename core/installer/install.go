@@ -22,6 +22,7 @@ package installer
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"abdal-4iproto-cli/core/config"
 	"abdal-4iproto-cli/core/downloader"
@@ -58,23 +59,39 @@ func Run(opts Options) error {
 		if !opts.Force {
 			return ErrAlreadyInstalled
 		}
-		if err := FreshWipeFor(opts.Target); err != nil {
-			return fmt.Errorf("fresh-install wipe failed: %w", err)
+		if opts.PreserveData {
+			// Binary-only reinstall: keep config/keys/users, stop the
+			// service(s) and drop the old executables so the downloader
+			// can replace them. Reusing SkipKeygen guarantees the server
+			// config/users/keys are never regenerated below.
+			if err := BinaryRefreshFor(opts.Target); err != nil {
+				return fmt.Errorf("binary refresh preparation failed: %w", err)
+			}
+			opts.SkipKeygen = true
+		} else {
+			if err := FreshWipeFor(opts.Target); err != nil {
+				return fmt.Errorf("fresh-install wipe failed: %w", err)
+			}
 		}
 	}
 
-	// Suggest server ports when none were provided (interactive/CLI may set them).
-	if (opts.Target == TargetAll || opts.Target == TargetServer) && len(opts.ServerPorts) == 0 {
-		suggested, err := network.SuggestFreePorts(config.ServerSuggestedCount)
-		if err != nil {
+	// Configuration is untouched in a binary-only reinstall, so the port
+	// suggestion and validation steps (which target a brand-new config)
+	// are skipped entirely; the service keeps its previous ports.
+	if !opts.PreserveData {
+		// Suggest server ports when none were provided (interactive/CLI may set them).
+		if (opts.Target == TargetAll || opts.Target == TargetServer) && len(opts.ServerPorts) == 0 {
+			suggested, err := network.SuggestFreePorts(config.ServerSuggestedCount)
+			if err != nil {
+				return err
+			}
+			opts.ServerPorts = suggested
+		}
+
+		// Port validation must happen before any download (requirement).
+		if err := validatePortsBeforeDownload(opts); err != nil {
 			return err
 		}
-		opts.ServerPorts = suggested
-	}
-
-	// Port validation must happen before any download (requirement).
-	if err := validatePortsBeforeDownload(opts); err != nil {
-		return err
 	}
 
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
@@ -221,7 +238,13 @@ func downloadAndInstallPanel(installDir string, opts Options) error {
 	if _, err := downloader.DownloadAsset(sel, installDir); err != nil {
 		return err
 	}
-	if err := filesgen.WritePanelConfig(installDir, opts.PanelPort, opts.PanelUsername, opts.PanelPassword); err != nil {
+	// In a binary-only reinstall the existing panel configuration is kept
+	// intact; only write defaults when not preserving data or when the
+	// file is missing (e.g. a first-time panel install).
+	panelCfgPath := filepath.Join(installDir, config.PanelConfigFileName)
+	if opts.PreserveData && pathExists(panelCfgPath) {
+		ui.Info("Preserving existing panel configuration: " + config.PanelConfigFileName)
+	} else if err := filesgen.WritePanelConfig(installDir, opts.PanelPort, opts.PanelUsername, opts.PanelPassword); err != nil {
 		return err
 	}
 	if opts.InstallServices {

@@ -42,6 +42,11 @@ type Options struct {
 	// Force performs a fresh install: the existing installation directory
 	// and any registered services are removed before starting again.
 	Force bool
+	// PreserveData requests a binary-only reinstall: the executables are
+	// re-downloaded and re-registered, but existing configuration files,
+	// SSH keys and user accounts are kept untouched. Only meaningful when
+	// Force is also set (i.e. an existing installation was detected).
+	PreserveData bool
 }
 
 // DefaultOptions returns sane defaults for a full stack install.

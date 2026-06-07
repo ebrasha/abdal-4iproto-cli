@@ -178,6 +178,59 @@ func freshWipePanel() error {
 	return nil
 }
 
+// BinaryRefreshFor prepares a binary-only reinstall for the requested
+// scope. Unlike FreshWipeFor it never deletes configuration files, SSH
+// keys or user accounts: it merely stops the relevant service(s) and
+// removes the executables so the downloader can drop fresh copies in
+// place (the stop step is essential on Windows, where a running service
+// keeps the .exe locked).
+func BinaryRefreshFor(target Target) error {
+	switch target {
+	case TargetServer:
+		return binaryRefreshServer()
+	case TargetPanel:
+		return binaryRefreshPanel()
+	default:
+		if err := binaryRefreshServer(); err != nil {
+			return err
+		}
+		return binaryRefreshPanel()
+	}
+}
+
+// binaryRefreshServer stops the server service and removes only the
+// server and keygen executables. Configuration, keys and users persist.
+func binaryRefreshServer() error {
+	ui.Info("Reinstalling server binaries only: stopping the server service and replacing executables (configuration, keys and users are preserved).")
+	_ = service.Stop(service.ComponentServer)
+
+	dir, err := paths.InstallDir()
+	if err != nil {
+		return err
+	}
+	removeIfPresent([]string{
+		paths.ServerBinaryPath(dir),
+		paths.KeygenBinaryPath(dir),
+	})
+	return nil
+}
+
+// binaryRefreshPanel stops the panel service and removes only the panel
+// executable. The panel configuration file is preserved.
+func binaryRefreshPanel() error {
+	ui.Info("Reinstalling panel binary only: stopping the panel service and replacing the executable (panel configuration is preserved).")
+	_ = service.Stop(service.ComponentPanel)
+
+	dir, err := paths.InstallDir()
+	if err != nil {
+		return err
+	}
+	removeIfPresent([]string{
+		paths.PanelBinaryPath(dir),
+	})
+	return nil
+}
+
 // removeIfPresent silently deletes every existing file in the list;
 // missing entries are ignored because partial installs may not contain
 // every artefact we know about.

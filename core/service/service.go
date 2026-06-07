@@ -78,6 +78,89 @@ func Restart(component Component) error {
 	}
 }
 
+// Start launches an already-installed service for the component.
+func Start(component Component) error {
+	switch runtime.GOOS {
+	case "linux":
+		if err := runCmd("systemctl", "start", linuxUnitName(component)); err != nil {
+			return err
+		}
+	case "windows":
+		if err := runCmd("sc", "start", windowsServiceName(component)); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported OS for service start: %s", runtime.GOOS)
+	}
+	ui.Success(fmt.Sprintf("Service '%s' started", serviceLabel(component)))
+	return nil
+}
+
+// Stop halts the running service for the component without removing it,
+// so it can be started again later or have its binary replaced safely.
+func Stop(component Component) error {
+	switch runtime.GOOS {
+	case "linux":
+		if err := runCmd("systemctl", "stop", linuxUnitName(component)); err != nil {
+			return err
+		}
+	case "windows":
+		if err := runCmd("sc", "stop", windowsServiceName(component)); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported OS for service stop: %s", runtime.GOOS)
+	}
+	ui.Success(fmt.Sprintf("Service '%s' stopped", serviceLabel(component)))
+	return nil
+}
+
+// Enable configures the service to start automatically at system boot.
+func Enable(component Component) error {
+	switch runtime.GOOS {
+	case "linux":
+		if err := runCmd("systemctl", "enable", linuxUnitName(component)); err != nil {
+			return err
+		}
+	case "windows":
+		// "start= auto" makes the Windows service start automatically.
+		if err := runCmd("sc", "config", windowsServiceName(component), "start=", "auto"); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported OS for service enable: %s", runtime.GOOS)
+	}
+	ui.Success(fmt.Sprintf("Service '%s' enabled (auto-start at boot)", serviceLabel(component)))
+	return nil
+}
+
+// Disable prevents the service from starting automatically at system boot.
+func Disable(component Component) error {
+	switch runtime.GOOS {
+	case "linux":
+		if err := runCmd("systemctl", "disable", linuxUnitName(component)); err != nil {
+			return err
+		}
+	case "windows":
+		// "start= disabled" stops Windows from launching the service.
+		if err := runCmd("sc", "config", windowsServiceName(component), "start=", "disabled"); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported OS for service disable: %s", runtime.GOOS)
+	}
+	ui.Success(fmt.Sprintf("Service '%s' disabled (no auto-start at boot)", serviceLabel(component)))
+	return nil
+}
+
+// serviceLabel returns the OS-specific service identifier for messages.
+func serviceLabel(component Component) string {
+	if runtime.GOOS == "windows" {
+		return windowsServiceName(component)
+	}
+	return linuxUnitName(component)
+}
+
 // Status prints a short status summary for the component.
 func Status(component Component) error {
 	switch runtime.GOOS {

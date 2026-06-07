@@ -51,6 +51,42 @@ func newServiceCmd() *cobra.Command {
 	}
 	restart.Flags().StringVar(&component, "component", "server", "server|panel")
 
+	start := &cobra.Command{
+		Use:   "start",
+		Short: "Start a service",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return service.Start(parseComponent(component))
+		},
+	}
+	start.Flags().StringVar(&component, "component", "server", "server|panel")
+
+	stop := &cobra.Command{
+		Use:   "stop",
+		Short: "Stop a running service",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return service.Stop(parseComponent(component))
+		},
+	}
+	stop.Flags().StringVar(&component, "component", "server", "server|panel")
+
+	enable := &cobra.Command{
+		Use:   "enable",
+		Short: "Enable a service so it auto-starts at boot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return service.Enable(parseComponent(component))
+		},
+	}
+	enable.Flags().StringVar(&component, "component", "server", "server|panel")
+
+	disable := &cobra.Command{
+		Use:   "disable",
+		Short: "Disable a service so it no longer auto-starts at boot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return service.Disable(parseComponent(component))
+		},
+	}
+	disable.Flags().StringVar(&component, "component", "server", "server|panel")
+
 	diagnostics := &cobra.Command{
 		Use:   "diagnostics",
 		Short: "Run troubleshooting diagnostics",
@@ -63,7 +99,7 @@ func newServiceCmd() *cobra.Command {
 		},
 	}
 
-	root.AddCommand(status, restart, diagnostics)
+	root.AddCommand(status, restart, start, stop, enable, disable, diagnostics)
 	return root
 }
 

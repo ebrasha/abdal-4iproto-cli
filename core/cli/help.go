@@ -62,7 +62,7 @@ install       Full/partial installation from GitHub releases
 uninstall     Remove services and optionally delete install directory
 user add      Add SSH user (requires --username --password --role ...)
 user remove   Remove SSH user by --username
-service       status|restart|diagnostics --component server|panel
+service       status|start|stop|restart|enable|disable|diagnostics --component server|panel
 config server Update server ports via --ports
 config panel  Update panel JSON via --port --username --password
 self-install  Copy CLI binary to system path as abdal-4iproto-cli
@@ -76,6 +76,8 @@ help          This screen
 --panel-port 52202 --panel-username ebrasha --panel-password <secret>
 --key-type ed25519 --key-bits 4096 --key-force --key-file id_ed25519
 --no-services
+--force      Wipe an existing installation and reinstall from scratch
+--keep-data  Reinstall binaries only, keeping configuration files and user accounts
 `))
 
 	ui.Box("KeyGen (bundled binary flags)", strings.TrimSpace(`

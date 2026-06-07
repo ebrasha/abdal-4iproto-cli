@@ -72,6 +72,11 @@ abdal-4iproto-cli install --server-only --key-type ed25519 --key-bits 4096 --key
 # نصب فقط پنل
 abdal-4iproto-cli install --panel-only --panel-port 52202
 
+# نصب مجدد فقط فایل‌های اجرایی – دانلود دوبارهٔ باینری‌ها با حفظ فایل‌های تنظیمات و حساب کاربران
+abdal-4iproto-cli install --keep-data              # کل مجموعه، فقط فایل‌های اجرایی
+abdal-4iproto-cli install --server-only --keep-data
+abdal-4iproto-cli install --panel-only --keep-data
+
 # افزودن کاربر
 abdal-4iproto-cli user add \
   --username ali --password "secret" --role user \
@@ -80,9 +85,13 @@ abdal-4iproto-cli user add \
 # حذف کاربر
 abdal-4iproto-cli user remove --username ali
 
-# مدیریت سرویس
+# مدیریت سرویس (status | start | stop | restart | enable | disable)
 abdal-4iproto-cli service status     --component server
+abdal-4iproto-cli service start      --component server
+abdal-4iproto-cli service stop       --component panel
 abdal-4iproto-cli service restart    --component panel
+abdal-4iproto-cli service enable     --component server
+abdal-4iproto-cli service disable    --component panel
 abdal-4iproto-cli service diagnostics
 
 # ویرایش تنظیمات

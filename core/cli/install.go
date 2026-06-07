@@ -44,6 +44,7 @@ func newInstallCmd() *cobra.Command {
 		keyFile       string
 		noServices    bool
 		forceFresh    bool
+		keepData      bool
 	)
 
 	cmd := &cobra.Command{
@@ -55,7 +56,11 @@ func newInstallCmd() *cobra.Command {
 			opts.PanelUsername = panelUser
 			opts.PanelPassword = panelPass
 			opts.InstallServices = !noServices
-			opts.Force = forceFresh
+			// --keep-data implies proceeding over an existing install, so
+			// it turns on Force while requesting a binary-only reinstall
+			// that preserves configuration files, keys and user accounts.
+			opts.PreserveData = keepData
+			opts.Force = forceFresh || keepData
 			opts.Keygen = keygen.Options{
 				Type: keyType, Bits: keyBits, Force: keyForce, OutputFile: keyFile,
 			}
@@ -72,26 +77,32 @@ func newInstallCmd() *cobra.Command {
 				opts.Target = installer.TargetAll
 			}
 
-			if serverPorts != "" {
-				ports, err := network.ParsePortList(serverPorts)
-				if err != nil {
-					return err
+			// A binary-only reinstall keeps the existing configuration and
+			// the service keeps its current ports, so the new-config port
+			// checks below are skipped (the ports are legitimately busy
+			// with the running service until installer.Run stops it).
+			if !keepData {
+				if serverPorts != "" {
+					ports, err := network.ParsePortList(serverPorts)
+					if err != nil {
+						return err
+					}
+					if err := network.ValidatePorts(ports); err != nil {
+						return fmt.Errorf("server ports validation failed: %w", err)
+					}
+					opts.ServerPorts = ports
 				}
-				if err := network.ValidatePorts(ports); err != nil {
-					return fmt.Errorf("server ports validation failed: %w", err)
-				}
-				opts.ServerPorts = ports
-			}
 
-			if opts.Target == installer.TargetAll || opts.Target == installer.TargetPanel {
-				if !network.IsPortAvailable(opts.PanelPort) {
-					return &network.PortCheckError{Port: opts.PanelPort}
+				if opts.Target == installer.TargetAll || opts.Target == installer.TargetPanel {
+					if !network.IsPortAvailable(opts.PanelPort) {
+						return &network.PortCheckError{Port: opts.PanelPort}
+					}
 				}
 			}
 
 			if err := installer.Run(opts); err != nil {
 				if errors.Is(err, installer.ErrAlreadyInstalled) {
-					return fmt.Errorf("%w. Re-run with --force to wipe the previous installation and reinstall from scratch", err)
+					return fmt.Errorf("%w. Re-run with --force (fresh) or --keep-data (binaries only) to reinstall over the existing installation", err)
 				}
 				return err
 			}
@@ -111,6 +122,7 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&keyFile, "key-file", config.DefaultKeyBaseName, "SSH private key output filename")
 	cmd.Flags().BoolVar(&noServices, "no-services", false, "Skip systemd/sc service registration")
 	cmd.Flags().BoolVar(&forceFresh, "force", false, "Wipe an existing installation and perform a fresh install")
+	cmd.Flags().BoolVar(&keepData, "keep-data", false, "Reinstall binaries only, keeping existing configuration files and user accounts")
 
 	return cmd
 }

@@ -139,14 +139,34 @@ func handleInstall() error {
 	}
 	if report.MatchesTarget(opts.Target) {
 		ui.WarningBox("Existing Installation Detected", buildScopeWarning(opts.Target, report.InstallDir))
-		confirm, err := ui.AskConfirm("Proceed with a fresh install (wipe + reinstall)?", false)
+		mode, err := ui.AskSelect("This component is already installed. How do you want to proceed?", []string{
+			"Fresh install (wipe + reinstall everything)",
+			"Reinstall binaries only (keep configuration & users)",
+			"Back",
+		}, "Reinstall binaries only (keep configuration & users)")
 		if err != nil {
+			if err == terminal.InterruptErr {
+				return ui.ErrUserBack
+			}
 			return err
 		}
-		if !confirm {
+		switch mode {
+		case "Fresh install (wipe + reinstall everything)":
+			opts.Force = true
+			opts.PreserveData = false
+		case "Reinstall binaries only (keep configuration & users)":
+			opts.Force = true
+			opts.PreserveData = true
+		default:
 			return ui.ErrUserBack
 		}
-		opts.Force = true
+
+		// A binary-only reinstall reuses the existing configuration, so
+		// there is nothing to prompt for: re-register services and run.
+		if opts.PreserveData {
+			opts.InstallServices = true
+			return installer.Run(opts)
+		}
 	}
 
 	opts, err = installer.PromptInstallDetails(opts)
@@ -163,17 +183,25 @@ func buildScopeWarning(target installer.Target, dir string) string {
 	switch target {
 	case installer.TargetServer:
 		return fmt.Sprintf(
-			"Abdal 4iProto Server is already installed in:\n%s\n\nA fresh install will stop and remove ONLY the server service and its files (server binary, keygen binary, SSH keys, server_config.json, users.json, blocked_ips.json). The panel and its data will be preserved.",
+			"Abdal 4iProto Server is already installed in:\n%s\n\n"+
+				"• Fresh install: stops and removes ONLY the server service and its files (server binary, keygen binary, SSH keys, server_config.json, users.json, blocked_ips.json).\n"+
+				"• Binaries only: re-downloads the server & keygen executables and keeps server_config.json, users.json, blocked_ips.json and SSH keys.\n\n"+
+				"The panel and its data are preserved either way.",
 			dir,
 		)
 	case installer.TargetPanel:
 		return fmt.Sprintf(
-			"Abdal 4iProto Panel is already installed in:\n%s\n\nA fresh install will stop and remove ONLY the panel service and its files (panel binary, abdal-4iproto-panel.json). The server and its data will be preserved.",
+			"Abdal 4iProto Panel is already installed in:\n%s\n\n"+
+				"• Fresh install: stops and removes ONLY the panel service and its files (panel binary, abdal-4iproto-panel.json).\n"+
+				"• Binaries only: re-downloads the panel executable and keeps abdal-4iproto-panel.json.\n\n"+
+				"The server and its data are preserved either way.",
 			dir,
 		)
 	default:
 		return fmt.Sprintf(
-			"Abdal 4iProto full stack (Server + Panel + KeyGen) is already installed in:\n%s\n\nA fresh install will stop every service and DELETE every file under this directory before re-downloading.",
+			"Abdal 4iProto full stack (Server + Panel + KeyGen) is already installed in:\n%s\n\n"+
+				"• Fresh install: stops every service and DELETES every file under this directory before re-downloading.\n"+
+				"• Binaries only: re-downloads the server, keygen and panel executables and keeps all configuration files, SSH keys and user accounts.",
 			dir,
 		)
 	}
@@ -221,32 +249,88 @@ func handleUninstall() error {
 	return uninstaller.Run(target, removeFiles)
 }
 
+// handleServices renders a two-step service-management flow: first pick
+// the component (server or panel), then choose an action (status, start,
+// stop, restart, enable, disable). The component-agnostic diagnostics
+// bundle stays available at the top level.
 func handleServices() error {
-	action, err := ui.AskSelect("Service action", []string{
-		"Status (Server)",
-		"Status (Panel)",
-		"Restart Server",
-		"Restart Panel",
-		"Diagnostics bundle",
-		"Back",
-	}, "Status (Server)")
-	if err != nil {
-		return err
+	for {
+		ui.ClearAndBanner()
+		choice, err := ui.AskSelect("Manage Services", []string{
+			"Server service",
+			"Panel service",
+			"Diagnostics bundle",
+			"Back",
+		}, "Server service")
+		if err != nil {
+			if err == terminal.InterruptErr {
+				return ui.ErrUserBack
+			}
+			return err
+		}
+
+		var subErr error
+		switch choice {
+		case "Server service":
+			subErr = handleServiceActions(service.ComponentServer, "Server")
+		case "Panel service":
+			subErr = handleServiceActions(service.ComponentPanel, "Panel")
+		case "Diagnostics bundle":
+			ui.ClearAndBanner()
+			dir, _ := paths.InstallDir()
+			subErr = service.Diagnostics(dir)
+			reportIfNotBack(subErr, "Diagnostics Failed")
+			if !ui.IsBack(subErr) {
+				ui.PressEnter()
+			}
+		case "Back":
+			return ui.ErrUserBack
+		}
 	}
-	switch action {
-	case "Status (Panel)":
-		return service.Status(service.ComponentPanel)
-	case "Restart Server":
-		return service.Restart(service.ComponentServer)
-	case "Restart Panel":
-		return service.Restart(service.ComponentPanel)
-	case "Diagnostics bundle":
-		dir, _ := paths.InstallDir()
-		return service.Diagnostics(dir)
-	case "Back":
-		return ui.ErrUserBack
-	default:
-		return service.Status(service.ComponentServer)
+}
+
+// handleServiceActions runs the action submenu for a single component so
+// the operator can control its full lifecycle without leaving the screen.
+func handleServiceActions(component service.Component, label string) error {
+	for {
+		ui.ClearAndBanner()
+		action, err := ui.AskSelect(label+" Service – Action", []string{
+			"Status",
+			"Start",
+			"Stop",
+			"Restart",
+			"Enable (auto-start at boot)",
+			"Disable (no auto-start at boot)",
+			"Back",
+		}, "Status")
+		if err != nil {
+			if err == terminal.InterruptErr {
+				return ui.ErrUserBack
+			}
+			return err
+		}
+		if action == "Back" {
+			return ui.ErrUserBack
+		}
+
+		ui.ClearAndBanner()
+		var subErr error
+		switch action {
+		case "Status":
+			subErr = service.Status(component)
+		case "Start":
+			subErr = service.Start(component)
+		case "Stop":
+			subErr = service.Stop(component)
+		case "Restart":
+			subErr = service.Restart(component)
+		case "Enable (auto-start at boot)":
+			subErr = service.Enable(component)
+		case "Disable (no auto-start at boot)":
+			subErr = service.Disable(component)
+		}
+		reportIfNotBack(subErr, label+" Service Action Failed")
+		ui.PressEnter()
 	}
 }
 
@@ -897,9 +981,9 @@ func printInteractiveHelp() {
 	ui.Box("Programmer", config.ProgrammerName+"\n"+config.ProgrammerMail+"\n"+config.ProgrammerTG)
 	ui.Box("Interactive Menu", strings.TrimSpace(`
 Main Menu
-  Install Abdal 4iProto
+  Install Abdal 4iProto ──► Fresh install / Reinstall binaries only (keep data)
   Uninstall Abdal 4iProto
-  Manage Services
+  Manage Services ──► Server/Panel ──► Status / Start / Stop / Restart / Enable / Disable
   Manage Users  ──► List & View Users / Add User / Edit User / Remove User
   Server Configuration ──► View Configuration / Edit Configuration
   Panel Configuration  ──► View Configuration / Edit Configuration
@@ -908,11 +992,11 @@ Main Menu
   Help / Exit
 `))
 	ui.Box("CLI Usage (non-interactive)", strings.TrimSpace(`
-abdal-4iproto-cli install [--server-only|--panel-only] [--server-ports 64235,64236] [--panel-port 52202]
+abdal-4iproto-cli install [--server-only|--panel-only] [--server-ports 64235,64236] [--panel-port 52202] [--force|--keep-data]
 abdal-4iproto-cli uninstall [--server-only|--panel-only] [--keep-files]
 abdal-4iproto-cli user add --username X --password Y --role user --max-sessions 2 --max-speed-kbps 512 --max-total-mb 0
 abdal-4iproto-cli user remove --username X
-abdal-4iproto-cli service status|restart --component server|panel
+abdal-4iproto-cli service status|start|stop|restart|enable|disable --component server|panel
 abdal-4iproto-cli config server --ports 64235,64236
 abdal-4iproto-cli config panel --port 52202 --username ebrasha --password secret
 abdal-4iproto-cli self-install

@@ -72,6 +72,11 @@ abdal-4iproto-cli install --server-only --key-type ed25519 --key-bits 4096 --key
 # Panel only
 abdal-4iproto-cli install --panel-only --panel-port 52202
 
+# Reinstall binaries only – re-download executables but keep configuration files and user accounts
+abdal-4iproto-cli install --keep-data              # full stack, binaries only
+abdal-4iproto-cli install --server-only --keep-data
+abdal-4iproto-cli install --panel-only --keep-data
+
 # Add a user
 abdal-4iproto-cli user add \
   --username ali --password "secret" --role user \
@@ -80,9 +85,13 @@ abdal-4iproto-cli user add \
 # Remove a user
 abdal-4iproto-cli user remove --username ali
 
-# Service operations
+# Service operations (status | start | stop | restart | enable | disable)
 abdal-4iproto-cli service status     --component server
+abdal-4iproto-cli service start      --component server
+abdal-4iproto-cli service stop       --component panel
 abdal-4iproto-cli service restart    --component panel
+abdal-4iproto-cli service enable     --component server
+abdal-4iproto-cli service disable    --component panel
 abdal-4iproto-cli service diagnostics
 
 # Update configuration
